@@ -1,0 +1,10 @@
+{
+  "requestId": "REQ-FUL-202606110001",
+  "sourceOrderNo": "SO202606110001",
+  "outboundOrderNo": "OUT202606110001",
+  "customerCode": "CUST-TESLA-001",
+  "warehouseCode": "WH-HZ-CENTRAL",
+  "productCode": "GT3-30KD1R11001",
+  "qty": 5
+}
+

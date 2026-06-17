@@ -1,0 +1,166 @@
+import type { PageResult } from './http'
+import { request } from './http'
+import type { ExportFile, ImportResult } from '../utils/fileTransfer'
+
+export interface ListParams {
+  pageNum?: number
+  pageSize?: number
+  [key: string]: unknown
+}
+
+export function loginApi(username: string, password: string) {
+  return request<{ token: string; user: any }>({
+    url: '/auth/login',
+    method: 'post',
+    data: { username, password }
+  })
+}
+
+export function meApi() {
+  return request<any>({ url: '/auth/me', method: 'get' })
+}
+
+export function menuApi() {
+  return request<any[]>({ url: '/menus', method: 'get' })
+}
+
+function list<T = any>(url: string, params: ListParams) {
+  return request<PageResult<T>>({ url, method: 'get', params })
+}
+
+function create(url: string, data: Record<string, unknown>) {
+  return request<string>({ url, method: 'post', data })
+}
+
+function update(url: string, id: number, data: Record<string, unknown>) {
+  return request<string>({ url: `${url}/${id}`, method: 'put', data })
+}
+
+function remove(url: string, id: number) {
+  return request<string>({ url: `${url}/${id}`, method: 'delete' })
+}
+
+export const productService = {
+  list: (params: ListParams) => list('/products', params),
+  options: (params: ListParams) => request<any[]>({ url: '/products/options', method: 'get', params }),
+  create: (data: Record<string, unknown>) => create('/products', data),
+  update: (id: number, data: Record<string, unknown>) => update('/products', id, data),
+  remove: (id: number) => remove('/products', id),
+  exportTemplate: () => request<ExportFile>({ url: '/products/export-template', method: 'get' }),
+  importRows: (rows: Record<string, unknown>[]) => request<ImportResult>({ url: '/products/import', method: 'post', data: { rows } }),
+  exportData: (params: ListParams) => request<ExportFile>({ url: '/products/export', method: 'get', params })
+}
+
+export const customerService = {
+  list: (params: ListParams) => list('/customers', params),
+  options: (params: ListParams) => request<any[]>({ url: '/customers/options', method: 'get', params }),
+  create: (data: Record<string, unknown>) => create('/customers', data),
+  update: (id: number, data: Record<string, unknown>) => update('/customers', id, data),
+  remove: (id: number) => remove('/customers', id),
+  exportTemplate: () => request<ExportFile>({ url: '/customers/export-template', method: 'get' }),
+  importRows: (rows: Record<string, unknown>[]) => request<ImportResult>({ url: '/customers/import', method: 'post', data: { rows } }),
+  exportData: (params: ListParams) => request<ExportFile>({ url: '/customers/export', method: 'get', params })
+}
+
+export const warehouseService = {
+  list: (params: ListParams) => list('/warehouses', params),
+  create: (data: Record<string, unknown>) => create('/warehouses', data),
+  update: (id: number, data: Record<string, unknown>) => update('/warehouses', id, data),
+  remove: (id: number) => remove('/warehouses', id)
+}
+
+export const locationService = {
+  list: (params: ListParams) => list('/locations', params),
+  create: (data: Record<string, unknown>) => create('/locations', data),
+  update: (id: number, data: Record<string, unknown>) => update('/locations', id, data),
+  remove: (id: number) => remove('/locations', id)
+}
+
+export const inventoryService = {
+  list: (params: ListParams) => list('/inventory', params)
+}
+
+export const snService = {
+  list: (params: ListParams) => list('/serial-numbers', params)
+}
+
+export const inboundService = {
+  list: (params: ListParams) => list('/inbound-orders', params),
+  create: (data: Record<string, unknown>) => request<any>({ url: '/inbound-orders', method: 'post', data }),
+  detail: (id: number) => request<any>({ url: `/inbound-orders/${id}`, method: 'get' }),
+  receive: (id: number, data: Record<string, unknown>) => request<any>({ url: `/inbound-orders/${id}/receive`, method: 'post', data }),
+  bindPackage: (id: number, data: Record<string, unknown>) => request<any>({ url: `/inbound-orders/${id}/bind-package`, method: 'post', data }),
+  snCollectOrderContext: (orderId: number) => request<any>({ url: `/inbound-orders/${orderId}/sn-collect-context`, method: 'get' }),
+  snCollectContext: (orderId: number, lineId: number) => request<any>({ url: `/inbound-orders/${orderId}/lines/${lineId}/sn-collect-context`, method: 'get' }),
+  collectedSns: (orderId: number, lineId: number) => request<any[]>({ url: `/inbound-orders/${orderId}/lines/${lineId}/collected-sns`, method: 'get' }),
+  validateSnCollection: (orderId: number, lineId: number, data: Record<string, unknown>) => request<any>({ url: `/inbound-orders/${orderId}/lines/${lineId}/validate-sn-collection`, method: 'post', data }),
+  confirmSnCollection: (orderId: number, lineId: number, data: Record<string, unknown>) => request<any>({ url: `/inbound-orders/${orderId}/lines/${lineId}/confirm-sn-collection`, method: 'post', data }),
+  cancelSnCollection: (orderId: number, lineId: number, data: Record<string, unknown>) => request<any>({ url: `/inbound-orders/${orderId}/lines/${lineId}/cancel-sn-collection`, method: 'post', data }),
+  sapPost: (id: number, data: Record<string, unknown>) => request<any>({ url: `/inbound-orders/${id}/post-sap`, method: 'post', data }),
+  retrySap: (orderIds: number[]) => request<any>({ url: '/inbound-orders/retry-sap', method: 'post', data: { orderIds } }),
+  importTemplate: () => request<ExportFile>({ url: '/inbound-orders/import-template', method: 'get' }),
+  importRows: (headers: Record<string, unknown>[], lines: Record<string, unknown>[]) => request<ImportResult>({ url: '/inbound-orders/import', method: 'post', data: { headers, lines } }),
+  exportData: (data: Record<string, unknown>) => request<ExportFile>({ url: '/inbound-orders/export', method: 'post', data })
+}
+
+export const snBindingService = {
+  list: (params: ListParams) => list('/inbound/sn-bindings', params),
+  remove: (id: number) => remove('/inbound/sn-bindings', id),
+  bulkRemove: (ids: number[]) => request<any>({ url: '/inbound/sn-bindings/bulk-delete', method: 'post', data: { ids } }),
+  exportData: (params: ListParams) => request<ExportFile>({ url: '/inbound/sn-bindings/export', method: 'get', params })
+}
+
+export const productionInboundService = {
+  list: (params: ListParams) => list('/inbound/production-orders', params),
+  create: (data: Record<string, unknown>) => request<any>({ url: '/inbound/production-orders', method: 'post', data }),
+  update: (id: number, data: Record<string, unknown>) => request<any>({ url: `/inbound/production-orders/${id}`, method: 'put', data }),
+  detail: (id: number) => request<any>({ url: `/inbound/production-orders/${id}`, method: 'get' }),
+  receive: (id: number, data: Record<string, unknown>) => request<any>({ url: `/inbound/production-orders/${id}/receive`, method: 'post', data }),
+  bindPackage: (id: number, data: Record<string, unknown>) => request<any>({ url: `/inbound/production-orders/${id}/bind-package`, method: 'post', data }),
+  putaway: (id: number, data: Record<string, unknown>) => request<any>({ url: `/inbound/production-orders/${id}/putaway`, method: 'post', data }),
+  sapPost: (id: number, data: Record<string, unknown>) => request<any>({ url: `/inbound/production-orders/${id}/sap-post`, method: 'post', data }),
+  mesSnPush: (data: Record<string, unknown>) => request<any>({ url: '/mock/mes/sn-push', method: 'post', data }),
+  sapProductionOrder: (data: Record<string, unknown>) => request<any>({ url: '/mock/sap/production-orders', method: 'post', data })
+}
+
+export const outboundService = {
+  list: (params: ListParams) => list('/outbound/shipping-orders', params),
+  salesList: (params: ListParams) => list('/outbound/sales-orders', params),
+  transferList: (params: ListParams) => list('/outbound/transfer-orders', params),
+  pickingTasks: (params: ListParams) => list('/outbound/picking-tasks', params),
+  createSalesMock: (data: Record<string, unknown>) => request<any>({ url: '/outbound/sales-orders/mock', method: 'post', data }),
+  createTransferMock: (data: Record<string, unknown>) => request<any>({ url: '/outbound/transfer-orders/mock', method: 'post', data }),
+  createShippingMock: (data: Record<string, unknown>) => request<any>({ url: '/outbound/shipping-orders/mock', method: 'post', data }),
+  detail: (id: number) => request<any>({ url: `/outbound/orders/${id}`, method: 'get' }),
+  allocationView: (id: number) => request<any>({ url: `/outbound/orders/${id}/allocations`, method: 'get' }),
+  allocateAuto: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/outbound/orders/${id}/allocate-auto`, method: 'post', data }),
+  allocateManual: (id: number, data: Record<string, unknown>) => request<any>({ url: `/outbound/orders/${id}/allocate-manual`, method: 'post', data }),
+  cancelAllocation: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/outbound/orders/${id}/cancel-allocation`, method: 'post', data }),
+  generatePickingTasks: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/outbound/orders/${id}/picking-tasks`, method: 'post', data }),
+  scanPicking: (id: number, data: Record<string, unknown>) => request<any>({ url: `/outbound/picking-tasks/${id}/scan`, method: 'post', data }),
+  pickingException: (id: number, data: Record<string, unknown>) => request<any>({ url: `/outbound/picking-tasks/${id}/exception`, method: 'post', data }),
+  review: (id: number, data: Record<string, unknown>) => request<any>({ url: `/outbound/orders/${id}/review`, method: 'post', data }),
+  ship: (id: number, data: Record<string, unknown>) => request<any>({ url: `/outbound/orders/${id}/ship`, method: 'post', data }),
+  traceCallback: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/outbound/orders/${id}/trace-callback`, method: 'post', data }),
+  sapCallback: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/outbound/orders/${id}/sap-callback`, method: 'post', data }),
+  interfaceLogs: (id: number) => request<any>({ url: `/outbound/orders/${id}/interface-logs`, method: 'get' }),
+  statusFlow: (id: number) => request<any>({ url: `/outbound/orders/${id}/status-flow`, method: 'get' })
+}
+
+export const interfaceLogService = {
+  list: (params: ListParams) => list('/interface-logs', params),
+  retry: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/interface-logs/${id}/retry`, method: 'post', data })
+}
+
+export const mockConfigService = {
+  list: (params: ListParams) => list('/mock-configs', params),
+  update: (id: number, data: Record<string, unknown>) => request<any>({ url: `/mock-configs/${id}`, method: 'put', data })
+}
+
+export const userService = {
+  list: (params: ListParams) => list('/system/users', params)
+}
+
+export function dashboardSummaryApi() {
+  return request<any>({ url: '/dashboard/summary', method: 'get' })
+}

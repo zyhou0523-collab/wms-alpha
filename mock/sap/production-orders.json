@@ -1,0 +1,11 @@
+{
+  "requestId": "REQ-SAP-MO-202606110001",
+  "sourceSystem": "SAP",
+  "sapWorkOrderNo": "MO202606110001",
+  "mesWorkOrderNo": "MES-MO-202606110001",
+  "inboundOrderNo": "IN202606110001",
+  "productCode": "GT3-30KD1R11001",
+  "warehouseCode": "WH-HZ-CENTRAL",
+  "qty": 10
+}
+
