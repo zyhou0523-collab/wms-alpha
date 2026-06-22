@@ -527,6 +527,16 @@ function sapStatusType(value: string) {
   background: #f8fafc;
 }
 
+.inbound-line-subtable :deep(.el-table-fixed-column--left),
+.inbound-line-subtable :deep(.el-table-fixed-column--right),
+.inbound-line-subtable :deep(.is-fixed) {
+  position: static !important;
+  left: auto !important;
+  right: auto !important;
+  z-index: auto !important;
+  box-shadow: none !important;
+}
+
 .hidden-file-input {
   display: none;
 }

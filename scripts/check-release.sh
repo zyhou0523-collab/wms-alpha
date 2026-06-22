@@ -27,8 +27,13 @@ for file in "${required_files[@]}"; do
 done
 
 for path in "frontend/node_modules" "frontend/dist" "backend/target" "dist" "build" ".env"; do
-  if [[ -e "${path}" ]]; then
-    echo "Release check failed: ${path} should not be committed."
+  if [[ -n "$(git ls-files -- "${path}")" ]]; then
+    echo "Release check failed: ${path} is tracked by Git."
+    exit 1
+  fi
+
+  if [[ -e "${path}" ]] && ! git check-ignore -q "${path}"; then
+    echo "Release check failed: ${path} exists locally and is not ignored by Git."
     exit 1
   fi
 done

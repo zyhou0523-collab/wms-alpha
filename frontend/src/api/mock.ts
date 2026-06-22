@@ -553,6 +553,215 @@ const endpointMap: Record<string, keyof ReturnType<typeof seed>> = {
   '/system/users': 'users'
 }
 
+function mockDashboardSummary(store: any) {
+  const totalStockQty = sum(store.inventory, 'total_qty')
+  const availableStockQty = sum(store.inventory, 'available_qty')
+  const allocatedStockQty = sum(store.inventory, 'allocated_qty')
+  const frozenStockQty = sum(store.inventory, 'frozen_qty')
+  return {
+    level: 'GROUP',
+    scopeName: '集团全局',
+    totalStockQty,
+    availableStockQty,
+    allocatedStockQty,
+    frozenStockQty,
+    safetyWarningSkuCount: mockSafetyWarnings(store, 50).length,
+    agingWarningSkuCount: mockAgingWarnings(store, 50).length,
+    interfaceFailedCount: store.interfaceLogs.filter((row: Row) => row.status === 'FAILED').length,
+    sapFailedCount: store.interfaceLogs.filter((row: Row) => row.status === 'FAILED' && row.target_system === 'SAP').length,
+    todayInboundQty: sum(store.inboundOrders.filter((row: Row) => String(row.created_at || '').includes('2026-06')), 'received_qty'),
+    todayOutboundQty: sum(store.outboundOrders.filter((row: Row) => String(row.created_at || '').includes('2026-06')), 'shipped_qty')
+  }
+}
+
+function mockInventoryStructure(store: any) {
+  return [
+    { name: '可用库存', value: sum(store.inventory, 'available_qty'), color: '#22c55e' },
+    { name: '已分配库存', value: sum(store.inventory, 'allocated_qty'), color: '#3b82f6' },
+    { name: '冻结库存', value: sum(store.inventory, 'frozen_qty'), color: '#f97316' },
+    { name: '待检库存', value: sum(store.inventory.filter((row: Row) => row.inventory_status === 'PENDING'), 'total_qty'), color: '#eab308' },
+    { name: '不合格库存', value: sum(store.inventory.filter((row: Row) => row.inventory_status === 'UNQUALIFIED'), 'total_qty'), color: '#ef4444' }
+  ]
+}
+
+function mockWarehouseMap(store: any) {
+  return store.warehouses.map((warehouse: Row) => {
+    const rows = store.inventory.filter((row: Row) => row.warehouse_code === warehouse.warehouse_code)
+    return {
+      warehouseId: warehouse.id,
+      warehouseCode: warehouse.warehouse_code,
+      warehouseName: warehouse.warehouse_name,
+      warehouseType: warehouse.warehouse_type,
+      region: warehouse.region,
+      country: warehouse.country || '中国',
+      city: warehouse.city || '-',
+      stockQty: rows.reduce((acc: number, row: Row) => acc + Number(row.total_qty || 0), 0),
+      warningCount: rows.filter((row: Row) => row.low_stock).length,
+      longitude: 120,
+      latitude: 30
+    }
+  })
+}
+
+function mockInoutTrend(store: any) {
+  const xAxis = ['2026-01', '2026-02', '2026-03', '2026-04', '2026-05', '2026-06']
+  const inboundQty = [120, 180, 160, 220, 260, sum(store.inboundOrders, 'received_qty')]
+  const outboundQty = [100, 150, 170, 200, 230, sum(store.outboundOrders, 'shipped_qty')]
+  const stockBalance = xAxis.map((_, index) => Math.max(0, 420 + index * 35 + inboundQty[index] - outboundQty[index]))
+  return { xAxis, inboundQty, outboundQty, stockBalance }
+}
+
+function mockWarehouseOperations(store: any) {
+  return store.warehouses.map((warehouse: Row) => {
+    const inboundRows = store.inboundOrders.filter((row: Row) => row.warehouse_code === warehouse.warehouse_code)
+    const outboundRows = store.outboundOrders.filter((row: Row) => row.warehouse_code === warehouse.warehouse_code)
+    return {
+      warehouseCode: warehouse.warehouse_code,
+      warehouseName: warehouse.warehouse_name,
+      inboundQty: sum(inboundRows, 'received_qty'),
+      outboundQty: sum(outboundRows, 'shipped_qty'),
+      countQty: 2 + (Number(warehouse.id || 0) % 4),
+      exceptionQty: Number(warehouse.id || 0) % 3
+    }
+  })
+}
+
+function mockSafetyWarnings(store: any, limit = 10) {
+  const grouped = new Map<string, Row>()
+  store.inventory.forEach((row: Row) => {
+    const key = `${row.warehouse_code}-${row.product_code}`
+    const existing = grouped.get(key) || {
+      warehouseName: row.warehouse_name,
+      productCode: row.product_code,
+      productName: row.product_name,
+      availableQty: 0,
+      safetyStockQty: Number(row.safety_stock || 0)
+    }
+    existing.availableQty += Number(row.available_qty || 0)
+    grouped.set(key, existing)
+  })
+  return Array.from(grouped.values())
+    .map((row: Row) => ({
+      ...row,
+      shortageQty: Math.max(Number(row.safetyStockQty || 0) - Number(row.availableQty || 0), 0),
+      warningLevel: Math.max(Number(row.safetyStockQty || 0) - Number(row.availableQty || 0), 0) >= Number(row.safetyStockQty || 0) * 0.5 ? 'HIGH' : 'MEDIUM'
+    }))
+    .filter((row: Row) => row.shortageQty > 0)
+    .sort((a: Row, b: Row) => Number(b.shortageQty) - Number(a.shortageQty))
+    .slice(0, limit)
+}
+
+function mockAgingWarnings(store: any, limit = 10) {
+  const nowDate = new Date('2026-06-17')
+  return store.inventory
+    .map((row: Row) => {
+      const inboundDate = new Date(row.inbound_date)
+      const agingDays = Math.max(0, Math.round((nowDate.getTime() - inboundDate.getTime()) / 86400000))
+      return {
+        warehouseName: row.warehouse_name,
+        productCode: row.product_code,
+        productName: row.product_name,
+        batchNo: row.batch_no,
+        inboundDate: row.inbound_date,
+        agingDays,
+        thresholdDays: row.aging_threshold_days || 180,
+        batteryFlag: String(row.product_name || '').includes('电池') ? '是' : '否'
+      }
+    })
+    .filter((row: Row) => Number(row.agingDays) > Number(row.thresholdDays))
+    .sort((a: Row, b: Row) => Number(b.agingDays) - Number(a.agingDays))
+    .slice(0, limit)
+}
+
+function mockInventoryQuery(store: any, params: Row = {}, limit = 5) {
+  const grouped = new Map<string, Row>()
+  store.inventory
+    .filter((row: Row) => !params.productCode || String(row.product_code || '').includes(String(params.productCode)))
+    .filter((row: Row) => !params.productName || String(row.product_name || '').includes(String(params.productName)))
+    .filter((row: Row) => !params.warehouseCode || String(row.warehouse_code || '').includes(String(params.warehouseCode)))
+    .forEach((row: Row) => {
+      const key = `${row.warehouse_code}-${row.product_code}`
+      const existing = grouped.get(key) || {
+        warehouseCode: row.warehouse_code,
+        warehouseName: row.warehouse_name,
+        productCode: row.product_code,
+        productName: row.product_name,
+        totalQty: 0,
+        availableQty: 0,
+        allocatedQty: 0,
+        frozenQty: 0,
+        unit: 'PCS'
+      }
+      existing.totalQty += Number(row.total_qty || 0)
+      existing.availableQty += Number(row.available_qty || 0)
+      existing.allocatedQty += Number(row.allocated_qty || 0)
+      existing.frozenQty += Number(row.frozen_qty || 0)
+      grouped.set(key, existing)
+    })
+  return Array.from(grouped.values()).slice(0, limit)
+}
+
+function mockWorkbench(store: any) {
+  const pendingInbound = store.inboundOrders
+    .filter((row: Row) => Number(row.planned_qty || 0) > Number(row.received_qty || 0) && row.status !== 'CLOSED')
+    .slice(0, 8)
+    .map((row: Row) => ({
+      id: row.id,
+      inboundOrderNo: row.order_no,
+      inboundType: row.inbound_type,
+      warehouseName: row.warehouse_name,
+      ownerName: row.owner_name || row.customer_name || row.supplier_name || '',
+      lineCount: row.lines?.length || 1,
+      pendingReceiveQty: Math.max(Number(row.planned_qty || 0) - Number(row.received_qty || 0), 0),
+      status: row.status,
+      createdAt: row.created_at
+    }))
+  const pendingOutbound = store.outboundOrders
+    .filter((row: Row) => row.status !== 'SHIPPED')
+    .slice(0, 8)
+    .map((row: Row) => ({
+      id: row.id,
+      outboundOrderNo: row.order_no,
+      outboundType: row.outbound_type,
+      warehouseName: row.warehouse_name,
+      customerName: row.customer_name,
+      orderQty: row.planned_qty,
+      status: row.status,
+      createdAt: row.created_at
+    }))
+  const todoList = [
+    { group: '入库待办', title: '待采集 SN', count: pendingInbound.length, path: '/inbound/arrival-notices' },
+    { group: '入库待办', title: '待收货', count: pendingInbound.length, path: '/inbound/arrival-notices' },
+    { group: '入库待办', title: 'SAP 回传失败', count: store.inboundOrders.filter((row: Row) => row.sap_post_status === 'FAILED').length, path: '/inbound/arrival-notices?sapPostStatus=FAILED' },
+    { group: '出库待办', title: '待分配', count: store.outboundOrders.filter((row: Row) => row.status === 'CREATED').length, path: '/outbound/shipping-orders' },
+    { group: '出库待办', title: '待拣货', count: store.outboundOrders.filter((row: Row) => row.status === 'ALLOCATED').length, path: '/outbound/shipping-orders' },
+    { group: '出库待办', title: '待发货', count: store.outboundOrders.filter((row: Row) => row.status === 'PICKED').length, path: '/outbound/shipping-orders' },
+    { group: '库存待办', title: '安全库存预警', count: mockSafetyWarnings(store, 50).length, path: '/inventory/list' },
+    { group: '库存待办', title: '长库龄预警', count: mockAgingWarnings(store, 50).length, path: '/inventory/list' }
+  ]
+  return {
+    summary: {
+      pendingReceiveCount: pendingInbound.length,
+      pendingShelveCount: store.inboundOrders.reduce((acc: number, row: Row) => acc + Math.max(Number(row.received_qty || 0) - Number(row.shelved_qty || 0), 0), 0),
+      pendingPickCount: store.outboundOrders.filter((row: Row) => row.status === 'ALLOCATED').length,
+      pendingShipCount: store.outboundOrders.filter((row: Row) => row.status === 'PICKED').length
+    },
+    inventoryRows: mockInventoryQuery(store, {}, 5),
+    safetyWarnings: mockSafetyWarnings(store, 5),
+    todoList,
+    pendingInbound,
+    pendingOutbound,
+    businessEntries: [
+      { title: '采集 SN', group: '入库作业', path: '/inbound/arrival-notices', icon: 'CirclePlus' },
+      { title: '收货确认', group: '入库作业', path: '/inbound/arrival-notices', icon: 'Download' },
+      { title: 'SAP 回传异常', group: '接口处理', path: '/inbound/arrival-notices?sapPostStatus=FAILED', icon: 'Warning' },
+      { title: '库存查询', group: '库存管理', path: '/inventory/list', icon: 'Search' },
+      { title: '产品主数据', group: '基础数据', path: '/masterdata/products', icon: 'Box' },
+      { title: '客户主数据', group: '基础数据', path: '/masterdata/customers', icon: 'User' }
+    ]
+  }
+}
+
 export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
   await new Promise((resolve) => window.setTimeout(resolve, 120))
   const url = (config.url || '').replace(/^\/api/, '')
@@ -561,7 +770,12 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
 
   if (url === '/menus' && method === 'get') {
     return [
-      { id: 'dashboard', title: '数据驾驶舱', icon: 'Monitor', path: '/dashboard', children: [] },
+      { id: 'dashboard', title: '数据驾驶舱', icon: 'Monitor', children: [
+        { id: 'globalDashboard', title: '全局库存看板', path: '/dashboard' }
+      ] },
+      { id: 'workbench', title: '工作台', icon: 'HomeFilled', children: [
+        { id: 'myWorkbench', title: '我的工作台', path: '/dashboard/workbench' }
+      ] },
       { id: 'masterdata', title: '基础数据', icon: 'Collection', children: [
         { id: 'products', title: '产品主数据', path: '/masterdata/products' },
         { id: 'customers', title: '客户主数据', path: '/masterdata/customers' }
@@ -600,7 +814,12 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
 
   if (url === '/menus') {
     return [
-      { id: 'dashboard', title: '数据驾驶舱', icon: 'Monitor', path: '/dashboard', children: [] },
+      { id: 'dashboard', title: '数据驾驶舱', icon: 'Monitor', children: [
+        { id: 'globalDashboard', title: '全局库存看板', path: '/dashboard' }
+      ] },
+      { id: 'workbench', title: '工作台', icon: 'HomeFilled', children: [
+        { id: 'myWorkbench', title: '我的工作台', path: '/dashboard/workbench' }
+      ] },
       { id: 'masterdata', title: '基础数据', icon: 'Collection', children: [
         { id: 'products', title: '产品主数据', path: '/masterdata/products' },
         { id: 'customers', title: '客户主数据', path: '/masterdata/customers' }
@@ -624,35 +843,56 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
   }
 
   if (url === '/dashboard/summary') {
-    const totalQty = sum(store.inventory, 'total_qty')
-    const availableQty = sum(store.inventory, 'available_qty')
-    return {
-      kpis: {
-        totalQty,
-        availableQty,
-        allocatedQty: sum(store.inventory, 'allocated_qty'),
-        frozenQty: sum(store.inventory, 'frozen_qty'),
-        lowStockSku: store.inventory.filter((row: Row) => row.low_stock).length,
-        agedSku: store.inventory.filter((row: Row) => row.aged).length,
-        interfaceFailed: store.interfaceLogs.filter((row: Row) => row.status === 'FAILED').length,
-        todayInboundQty: 22,
-        todayOutboundQty: 11
-      },
-      warehouseDistribution: store.warehouses.map((w: Row) => ({
-        warehouse_type: w.warehouse_type,
-        total_qty: store.inventory.filter((row: Row) => row.warehouse_code === w.warehouse_code).reduce((acc: number, row: Row) => acc + row.total_qty, 0)
-      })),
-      lowStockRows: store.inventory.filter((row: Row) => row.low_stock).slice(0, 10),
-      recentInterfaceErrors: store.interfaceLogs.filter((row: Row) => row.status !== 'SUCCESS').slice(0, 8),
-      monthlyTrend: [
-        { month: '2026-01', inbound_qty: 80, outbound_qty: 60 },
-        { month: '2026-02', inbound_qty: 100, outbound_qty: 75 },
-        { month: '2026-03', inbound_qty: 96, outbound_qty: 84 },
-        { month: '2026-04', inbound_qty: 120, outbound_qty: 92 },
-        { month: '2026-05', inbound_qty: 140, outbound_qty: 110 },
-        { month: '2026-06', inbound_qty: 68, outbound_qty: 52 }
-      ]
-    } as T
+    return mockDashboardSummary(store) as T
+  }
+
+  if (url === '/dashboard/inventory-structure') {
+    return mockInventoryStructure(store) as T
+  }
+
+  if (url === '/dashboard/warehouse-map') {
+    return mockWarehouseMap(store) as T
+  }
+
+  if (url === '/dashboard/inout-trend') {
+    return mockInoutTrend(store) as T
+  }
+
+  if (url === '/dashboard/warehouse-operation' || url === '/dashboard/warehouse-operations') {
+    return mockWarehouseOperations(store) as T
+  }
+
+  if (url === '/dashboard/safety-warnings') {
+    return mockSafetyWarnings(store, Number((config.params as Row)?.limit || 10)) as T
+  }
+
+  if (url === '/dashboard/aging-warnings') {
+    return mockAgingWarnings(store, Number((config.params as Row)?.limit || 10)) as T
+  }
+
+  if (url === '/workbench') {
+    return mockWorkbench(store) as T
+  }
+
+  if (url === '/workbench/summary') {
+    return mockWorkbench(store).summary as T
+  }
+
+  if (url === '/workbench/inventory-query') {
+    const params = (config.params || {}) as Row
+    return mockInventoryQuery(store, params, Number(params.limit || 5)) as T
+  }
+
+  if (url === '/workbench/todo-list') {
+    return mockWorkbench(store).todoList as T
+  }
+
+  if (url === '/workbench/pending-inbound') {
+    return mockWorkbench(store).pendingInbound as T
+  }
+
+  if (url === '/workbench/pending-outbound') {
+    return mockWorkbench(store).pendingOutbound as T
   }
 
   if (url.startsWith('/interface-logs/') && method === 'post') {
@@ -986,6 +1226,7 @@ function normalizeStore(store: any) {
   store.shipmentRecords ||= []
   store.inventoryTransactions ||= []
   store.outboundExceptions ||= []
+  restoreFullMockSeedIfReduced(store, fresh)
   ensureOwnerCustomerProductData(store)
 
   store.inboundOrders.forEach((order: Row, index: number) => {
@@ -1075,6 +1316,57 @@ function normalizeStore(store: any) {
   ensureMixedInboundDemo(store)
   ensureInboundShipFromCountries(store)
   return store
+}
+
+function restoreFullMockSeedIfReduced(store: any, fresh: any) {
+  mergeRowsByKey(store, fresh, 'products', (row) => `${row.owner_code || ''}::${row.product_code}`)
+  mergeRowsByKey(store, fresh, 'customers', (row) => row.customer_code)
+  mergeRowsByKey(store, fresh, 'warehouses', (row) => row.warehouse_code)
+  mergeRowsByKey(store, fresh, 'locations', (row) => `${row.warehouse_code || row.warehouse_id}::${row.location_code}`)
+  mergeRowsByKey(store, fresh, 'inventory', (row) => `${row.warehouse_code || row.warehouse_id}::${row.location_code || row.location_id}::${row.product_code || row.product_id}::${row.batch_no || row.id}`)
+  mergeRowsByKey(store, fresh, 'serialNumbers', (row) => row.sn_code)
+  mergeRowsByKey(store, fresh, 'inboundOrders', (row) => row.order_no)
+  mergeRowsByKey(store, fresh, 'inboundOrderLines', (row) => `${row.order_no || row.order_id}::${row.line_no}`)
+  mergeRowsByKey(store, fresh, 'inboundReceipts', (row) => row.receipt_no)
+  mergeRowsByKey(store, fresh, 'inboundReceiptLines', (row) => `${row.receipt_id}::${row.line_no}::${row.product_code || row.product_id}`)
+  mergeRowsByKey(store, fresh, 'inboundReceiptSns', (row) => `${row.receipt_id}::${row.sn_code}`)
+  mergeRowsByKey(store, fresh, 'packageBindings', (row) => row.sn_code)
+  mergeRowsByKey(store, fresh, 'outboundOrders', (row) => row.order_no)
+  mergeRowsByKey(store, fresh, 'outboundOrderLines', (row) => `${row.order_no || row.order_id}::${row.line_no}`)
+  mergeRowsByKey(store, fresh, 'interfaceLogs', (row) => `${row.interface_name}::${row.business_doc_no}::${row.created_at || row.id}`)
+  mergeRowsByKey(store, fresh, 'operationLogs', (row) => `${row.module}::${row.business_doc_no}::${row.action}::${row.created_at || row.id}`)
+  mergeRowsByKey(store, fresh, 'inventoryAllocations', (row) => row.allocation_no || `${row.outbound_order_no}::${row.sn_code}`)
+  mergeRowsByKey(store, fresh, 'pickingTasks', (row) => row.task_no)
+  mergeRowsByKey(store, fresh, 'pickingRecords', (row) => `${row.task_no}::${row.sn_code}`)
+  mergeRowsByKey(store, fresh, 'reviewRecords', (row) => `${row.outbound_order_no}::${row.sn_code}`)
+  mergeRowsByKey(store, fresh, 'shipmentRecords', (row) => row.shipment_no || `${row.outbound_order_no}::${row.tracking_no}`)
+  mergeRowsByKey(store, fresh, 'inventoryTransactions', (row) => row.transaction_no)
+}
+
+function mergeRowsByKey(store: any, fresh: any, collection: string, keyOf: (row: Row) => unknown) {
+  const source = Array.isArray(fresh[collection]) ? fresh[collection] : []
+  store[collection] = Array.isArray(store[collection]) ? store[collection] : []
+  if (store[collection].length >= source.length) {
+    return
+  }
+  const keyMap = new Map<string, Row>()
+  store[collection].forEach((row: Row) => {
+    const key = String(keyOf(row) || '')
+    if (key) keyMap.set(key, row)
+  })
+  source.forEach((row: Row) => {
+    const key = String(keyOf(row) || '')
+    if (!key) return
+    const existing = keyMap.get(key)
+    if (existing) {
+      Object.assign(existing, { ...row, ...existing })
+      return
+    }
+    const next = { ...row }
+    if (next.id == null) next.id = nextId(store[collection])
+    store[collection].push(next)
+    keyMap.set(key, next)
+  })
 }
 
 function ensureInboundShipFromCountries(store: any) {

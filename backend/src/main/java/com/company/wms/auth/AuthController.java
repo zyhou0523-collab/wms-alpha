@@ -52,7 +52,12 @@ public class AuthController {
   @GetMapping("/menus")
   public ApiResponse<List<Map<String, Object>>> menus() {
     return ApiResponse.ok(List.of(
-        menu("dashboard", "数据驾驶舱", "Monitor", "/dashboard"),
+        menu("dashboard", "数据驾驶舱", "Monitor", null,
+            child("globalDashboard", "全局库存看板", "/dashboard")
+        ),
+        menu("workbench", "工作台", "HomeFilled", null,
+            child("myWorkbench", "我的工作台", "/dashboard/workbench")
+        ),
         menu("masterdata", "基础数据", "Collection", null,
             child("products", "产品主数据", "/masterdata/products"),
             child("customers", "客户主数据", "/masterdata/customers")

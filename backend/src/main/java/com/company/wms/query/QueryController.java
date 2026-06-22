@@ -4,7 +4,6 @@ import com.company.wms.common.ApiResponse;
 import com.company.wms.common.PageResult;
 import com.company.wms.common.WmsRepository;
 import java.util.HashMap;
-import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
 import org.springframework.jdbc.core.namedparam.NamedParameterJdbcTemplate;
@@ -532,69 +531,6 @@ public class QueryController {
         pageNum,
         pageSize
     ));
-  }
-
-  @GetMapping("/api/dashboard/summary")
-  public ApiResponse<Map<String, Object>> dashboardSummary() {
-    Map<String, Object> data = new LinkedHashMap<>();
-    Map<String, Object> kpis = new LinkedHashMap<>();
-    kpis.put("totalQty", repo.number("SELECT COALESCE(SUM(total_qty), 0) FROM wms_inventory", Map.of()));
-    kpis.put("availableQty", repo.number("SELECT COALESCE(SUM(available_qty), 0) FROM wms_inventory", Map.of()));
-    kpis.put("allocatedQty", repo.number("SELECT COALESCE(SUM(allocated_qty), 0) FROM wms_inventory", Map.of()));
-    kpis.put("frozenQty", repo.number("SELECT COALESCE(SUM(frozen_qty), 0) FROM wms_inventory", Map.of()));
-    kpis.put("lowStockSku", repo.number("""
-        SELECT COUNT(*) FROM (
-          SELECT p.id FROM md_product p
-          LEFT JOIN wms_inventory i ON i.product_id = p.id
-          GROUP BY p.id, p.safety_stock
-          HAVING COALESCE(SUM(i.available_qty), 0) < p.safety_stock
-        ) t
-        """, Map.of()));
-    kpis.put("agedSku", repo.number("""
-        SELECT COUNT(DISTINCT i.product_id)
-        FROM wms_inventory i
-        JOIN md_product p ON p.id = i.product_id
-        WHERE DATEDIFF(CURDATE(), i.inbound_date) > p.aging_threshold_days
-        """, Map.of()));
-    kpis.put("interfaceFailed", repo.number("SELECT COUNT(*) FROM wms_interface_log WHERE status = 'FAILED'", Map.of()));
-    kpis.put("todayInboundQty", repo.number("SELECT COALESCE(SUM(received_qty), 0) FROM wms_inbound_order WHERE DATE(created_at) = CURDATE()", Map.of()));
-    kpis.put("todayOutboundQty", repo.number("SELECT COALESCE(SUM(shipped_qty), 0) FROM wms_outbound_order WHERE DATE(created_at) = CURDATE()", Map.of()));
-    data.put("kpis", kpis);
-
-    data.put("warehouseDistribution", repo.query("""
-        SELECT w.warehouse_type, SUM(i.total_qty) AS total_qty, SUM(i.available_qty) AS available_qty
-        FROM wms_inventory i
-        JOIN wms_warehouse w ON w.id = i.warehouse_id
-        GROUP BY w.warehouse_type
-        ORDER BY total_qty DESC
-        """, Map.of()));
-    data.put("lowStockRows", repo.query("""
-        SELECT p.product_code, p.product_name, p.safety_stock, COALESCE(SUM(i.available_qty), 0) AS available_qty
-        FROM md_product p
-        LEFT JOIN wms_inventory i ON i.product_id = p.id
-        GROUP BY p.id, p.product_code, p.product_name, p.safety_stock
-        HAVING available_qty < p.safety_stock
-        ORDER BY available_qty ASC
-        LIMIT 10
-        """, Map.of()));
-    data.put("recentInterfaceErrors", repo.query("""
-        SELECT interface_name, business_doc_no, status, error_message, created_at
-        FROM wms_interface_log
-        WHERE status IN ('FAILED', 'WARNING')
-        ORDER BY created_at DESC
-        LIMIT 8
-        """, Map.of()));
-    data.put("monthlyTrend", repo.query("""
-        SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, SUM(received_qty) AS inbound_qty, 0 AS outbound_qty
-        FROM wms_inbound_order
-        GROUP BY DATE_FORMAT(created_at, '%Y-%m')
-        UNION ALL
-        SELECT DATE_FORMAT(created_at, '%Y-%m') AS month, 0 AS inbound_qty, SUM(shipped_qty) AS outbound_qty
-        FROM wms_outbound_order
-        GROUP BY DATE_FORMAT(created_at, '%Y-%m')
-        ORDER BY month
-        """, Map.of()));
-    return ApiResponse.ok(data);
   }
 
   private boolean boolValue(Object value) {

@@ -2,7 +2,8 @@ import { createRouter, createWebHistory, RouteRecordRaw } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import MainLayout from '../layout/MainLayout.vue'
 import Login from '../views/login/Login.vue'
-import Dashboard from '../views/dashboard/Dashboard.vue'
+import Dashboard from '../views/dashboard/index.vue'
+import Workbench from '../views/workbench/index.vue'
 import ProductPage from '../views/masterdata/ProductPage.vue'
 import CustomerPage from '../views/masterdata/CustomerPage.vue'
 import WarehousePage from '../views/warehouse/WarehousePage.vue'
@@ -24,6 +25,7 @@ const routes: RouteRecordRaw[] = [
     redirect: '/dashboard',
     children: [
       { path: 'dashboard', component: Dashboard, meta: { title: '数据驾驶舱' } },
+      { path: 'dashboard/workbench', component: Workbench, meta: { title: '我的工作台' } },
       { path: 'masterdata/products', component: ProductPage, meta: { title: '产品主数据' } },
       { path: 'masterdata/customers', component: CustomerPage, meta: { title: '客户主数据' } },
       { path: 'warehouse/warehouses', component: WarehousePage, meta: { title: '仓库管理' } },

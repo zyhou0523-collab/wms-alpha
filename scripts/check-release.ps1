@@ -35,9 +35,18 @@ $blockedPaths = @(
 )
 
 foreach ($path in $blockedPaths) {
-  if (Test-Path -LiteralPath $path) {
-    Write-Error "Release check failed: $path should not be committed."
+  $tracked = git ls-files -- $path
+  if ($tracked) {
+    Write-Error "Release check failed: $path is tracked by Git."
     exit 1
+  }
+
+  if (Test-Path -LiteralPath $path) {
+    git check-ignore -q -- $path
+    if ($LASTEXITCODE -ne 0) {
+      Write-Error "Release check failed: $path exists locally and is not ignored by Git."
+      exit 1
+    }
   }
 }
 
