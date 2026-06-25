@@ -416,6 +416,115 @@ INSERT INTO wms_operation_log (module, business_doc_no, action, operator, result
 ('OUTBOUND', 'OUT202606120005', 'SHIP_CONFIRM', 'logistics', 'SUCCESS', '鍙戣揣纭骞惰Е鍙戣拷婧?SAP 鍥炰紶', DATE_SUB(NOW(), INTERVAL 3 DAY)),
 ('OUTBOUND', 'OUT202606120008', 'SAP_OUTBOUND_POSTING', 'system', 'FAILED', 'SAP 搴撳瓨鍦扮偣涓嶅瓨鍦?, DATE_SUB(NOW(), INTERVAL 5 DAY));
 
+-- 发运订单模块 v0.7 演示数据：销售 / 调拨 / STO / 部分发运
+INSERT INTO wms_inventory (warehouse_id, area_id, location_id, product_id, batch_no, inventory_status, total_qty, available_qty, allocated_qty, frozen_qty, unqualified_qty, inbound_date)
+SELECT 1, 1, 1, p.id, 'BATCH-SHIP-GT3-202606', 'QUALIFIED', 40, 35, 0, 0, 0, '2026-04-01'
+FROM md_product p WHERE p.product_code = 'GT3-10KD1R11004' LIMIT 1;
+INSERT INTO wms_inventory (warehouse_id, area_id, location_id, product_id, batch_no, inventory_status, total_qty, available_qty, allocated_qty, frozen_qty, unqualified_qty, inbound_date)
+SELECT 1, 1, 1, p.id, 'BATCH-SHIP-HXEDE-202606', 'QUALIFIED', 80, 80, 0, 0, 0, '2026-04-03'
+FROM md_product p WHERE p.product_code = 'HXEDE081R10002' LIMIT 1;
+INSERT INTO wms_inventory (warehouse_id, area_id, location_id, product_id, batch_no, inventory_status, total_qty, available_qty, allocated_qty, frozen_qty, unqualified_qty, inbound_date)
+SELECT 1, 1, 2, p.id, 'BATCH-SHIP-FROZEN-202606', 'QUALIFIED', 5, 0, 0, 5, 0, '2026-03-20'
+FROM md_product p WHERE p.product_code = 'GT3-10KD1R11004' LIMIT 1;
+
+INSERT INTO wms_serial_number (sn_code, product_id, warehouse_id, location_id, pallet_code, box_code, status, quality_status, locked_flag, inbound_order_no, created_at)
+SELECT CONCAT('SN-SHIP-GT3-', LPAD(seq.n, 4, '0')), p.id, 1, 1, CONCAT('PLT-SHIP-', LPAD(CEIL(seq.n / 10), 3, '0')), CONCAT('BOX-SHIP-', LPAD(CEIL(seq.n / 5), 3, '0')), 'ON_SHELF', 'QUALIFIED', 0, 'IN-SHIP-DEMO', DATE_SUB(NOW(), INTERVAL seq.n DAY)
+FROM (
+  SELECT 1 n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5
+  UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10
+  UNION ALL SELECT 11 UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
+) seq
+JOIN md_product p ON p.product_code = 'GT3-10KD1R11004';
+INSERT INTO wms_serial_number (sn_code, product_id, warehouse_id, location_id, pallet_code, box_code, status, quality_status, locked_flag, locked_order_no, inbound_order_no, created_at)
+SELECT CONCAT('SN-SHIP-BAD-', LPAD(seq.n, 4, '0')), p.id, 1, 2, 'PLT-SHIP-FROZEN', 'BOX-SHIP-FROZEN', 'ON_SHELF', IF(seq.n <= 3, 'UNQUALIFIED', 'QUALIFIED'), IF(seq.n = 5, 1, 0), IF(seq.n = 5, 'OTHER-LOCK', NULL), 'IN-SHIP-BAD', NOW()
+FROM (SELECT 1 n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5) seq
+JOIN md_product p ON p.product_code = 'GT3-10KD1R11004';
+
+INSERT INTO wms_outbound_order (
+  order_no, source_order_no, source_system, outbound_type, warehouse_id, target_warehouse_id, customer_id,
+  owner_code, owner_name, consignee_code, consignee_name, expected_ship_time, related_order_no, sales_order_no,
+  target_owner_code, target_owner_name, required_delivery_time, planned_qty, allocated_qty, picked_qty, review_qty, shipped_qty,
+  status, logistics_company, carrier_name, tracking_no, sap_post_status, sap_post_result, parent_order_no, split_flag, remark, created_at
+) VALUES
+('SO-OUT-202606110001', 'FUL-SO-202606110001', 'FULFILLMENT', 'SALES_OUTBOUND', 1, NULL, 1, '3060', '杭州利沃得', 'CUST-TESLA-001', 'Tesla Energy China', DATE_ADD(NOW(), INTERVAL 1 DAY), 'FUL-SO-202606110001', 'SO202606110001', NULL, NULL, DATE_ADD(NOW(), INTERVAL 2 DAY), 8, 0, 0, 0, 0, 'CREATED', NULL, NULL, NULL, 'NOT_POSTED', '', NULL, 0, '销售出库完整闭环演示起点', DATE_SUB(NOW(), INTERVAL 30 MINUTE)),
+('TR-OUT-202606110001', 'TR202606110001', 'WMS', 'WAREHOUSE_TRANSFER', 1, 2, NULL, '3060', '杭州利沃得', NULL, NULL, DATE_ADD(NOW(), INTERVAL 1 DAY), 'TR202606110001', NULL, '3060', '上海区域仓货主', DATE_ADD(NOW(), INTERVAL 2 DAY), 6, 0, 0, 0, 0, 'CREATED', NULL, NULL, NULL, 'NOT_POSTED', '', NULL, 0, '杭州总仓调拨至上海区域仓', DATE_SUB(NOW(), INTERVAL 25 MINUTE)),
+('STO-OUT-202606110001', 'STO202606110001', 'SAP', 'STO_OUTBOUND', 1, 2, NULL, '3060', '杭州利沃得', NULL, NULL, DATE_ADD(NOW(), INTERVAL 1 DAY), 'STO202606110001', NULL, '3060', '上海区域仓货主', DATE_ADD(NOW(), INTERVAL 2 DAY), 4, 4, 2, 0, 0, 'PARTIAL_PICKED', NULL, NULL, NULL, 'NOT_POSTED', '', NULL, 0, 'STO 出库部分拣货演示', DATE_SUB(NOW(), INTERVAL 20 MINUTE)),
+('SO-OUT-202606110002', 'FUL-SO-202606110002', 'FULFILLMENT', 'SALES_OUTBOUND', 1, NULL, 2, '3060', '杭州利沃得', 'CUST-BYD-002', '比亚迪储能事业部', DATE_SUB(NOW(), INTERVAL 1 DAY), 'FUL-SO-202606110002', 'SO202606110002', NULL, NULL, DATE_ADD(NOW(), INTERVAL 1 DAY), 5, 5, 5, 0, 2, 'PARTIAL_SHIPPED', 'SF', 'SF', 'SF202606110002', 'SUCCESS', 'SAP 出库扣减成功 4900009002', NULL, 0, '部分发运关单生成分单演示', DATE_SUB(NOW(), INTERVAL 1 DAY));
+
+INSERT INTO wms_outbound_order_detail (order_id, line_no, product_id, planned_qty, sap_plant, unit, sn_required, allocated_qty, picked_qty, review_qty, shipped_qty, batch_no, status)
+SELECT o.id, 10, p.id, 3, '3060', 'PCS', 1, 0, 0, 0, 0, 'BATCH-SO-OUT-001-L10', 'CREATED'
+FROM wms_outbound_order o JOIN md_product p ON p.product_code = 'GT3-10KD1R11004'
+WHERE o.order_no = 'SO-OUT-202606110001';
+INSERT INTO wms_outbound_order_detail (order_id, line_no, product_id, planned_qty, sap_plant, unit, sn_required, allocated_qty, picked_qty, review_qty, shipped_qty, batch_no, status)
+SELECT o.id, 20, p.id, 5, '3060', 'PCS', 0, 0, 0, 0, 0, 'BATCH-SO-OUT-001-L20', 'CREATED'
+FROM wms_outbound_order o JOIN md_product p ON p.product_code = 'HXEDE081R10002'
+WHERE o.order_no = 'SO-OUT-202606110001';
+INSERT INTO wms_outbound_order_detail (order_id, line_no, product_id, planned_qty, sap_plant, unit, sn_required, allocated_qty, picked_qty, review_qty, shipped_qty, batch_no, status)
+SELECT o.id, 10, p.id, 2, '3060', 'PCS', 1, 0, 0, 0, 0, 'BATCH-TR-OUT-001-L10', 'CREATED'
+FROM wms_outbound_order o JOIN md_product p ON p.product_code = 'GT3-10KD1R11004'
+WHERE o.order_no = 'TR-OUT-202606110001';
+INSERT INTO wms_outbound_order_detail (order_id, line_no, product_id, planned_qty, sap_plant, unit, sn_required, allocated_qty, picked_qty, review_qty, shipped_qty, batch_no, status)
+SELECT o.id, 20, p.id, 4, '3060', 'PCS', 0, 0, 0, 0, 0, 'BATCH-TR-OUT-001-L20', 'CREATED'
+FROM wms_outbound_order o JOIN md_product p ON p.product_code = 'HXEDE081R10002'
+WHERE o.order_no = 'TR-OUT-202606110001';
+INSERT INTO wms_outbound_order_detail (order_id, line_no, product_id, planned_qty, sap_plant, unit, sn_required, allocated_qty, picked_qty, review_qty, shipped_qty, batch_no, status)
+SELECT o.id, 10, p.id, 4, '3060', 'PCS', 1, 4, 2, 0, 0, 'BATCH-STO-OUT-001-L10', 'PARTIAL_PICKED'
+FROM wms_outbound_order o JOIN md_product p ON p.product_code = 'GT3-10KD1R11004'
+WHERE o.order_no = 'STO-OUT-202606110001';
+INSERT INTO wms_outbound_order_detail (order_id, line_no, product_id, planned_qty, sap_plant, unit, sn_required, allocated_qty, picked_qty, review_qty, shipped_qty, batch_no, status)
+SELECT o.id, 10, p.id, 5, '3060', 'PCS', 1, 5, 5, 0, 2, 'BATCH-SO-OUT-002-L10', 'PARTIAL_SHIPPED'
+FROM wms_outbound_order o JOIN md_product p ON p.product_code = 'GT3-10KD1R11004'
+WHERE o.order_no = 'SO-OUT-202606110002';
+
+INSERT INTO wms_inventory_allocation (
+  allocation_no, outbound_order_id, outbound_order_no, outbound_detail_id, inventory_id, warehouse_id, location_id,
+  product_id, batch_no, sn_code, allocated_qty, allocation_mode, allocation_status, picker, picked_at, created_at
+)
+SELECT CONCAT('ALLOC-', o.order_no, '-', sn.sn_code), o.id, o.order_no, d.id, i.id, 1, 1, sn.product_id, i.batch_no, sn.sn_code, 1,
+       'AUTO_FIFO', IF(sn.sn_code IN ('SN-SHIP-GT3-0001','SN-SHIP-GT3-0002','SN-SHIP-GT3-0006','SN-SHIP-GT3-0007','SN-SHIP-GT3-0008','SN-SHIP-GT3-0009','SN-SHIP-GT3-0010'), 'PICKED', 'ALLOCATED'),
+       IF(sn.sn_code IN ('SN-SHIP-GT3-0001','SN-SHIP-GT3-0002','SN-SHIP-GT3-0006','SN-SHIP-GT3-0007','SN-SHIP-GT3-0008','SN-SHIP-GT3-0009','SN-SHIP-GT3-0010'), 'wh_admin', NULL),
+       IF(sn.sn_code IN ('SN-SHIP-GT3-0001','SN-SHIP-GT3-0002','SN-SHIP-GT3-0006','SN-SHIP-GT3-0007','SN-SHIP-GT3-0008','SN-SHIP-GT3-0009','SN-SHIP-GT3-0010'), DATE_SUB(NOW(), INTERVAL 2 HOUR), NULL),
+       DATE_SUB(NOW(), INTERVAL 2 HOUR)
+FROM wms_serial_number sn
+JOIN wms_inventory i ON i.product_id = sn.product_id AND i.warehouse_id = 1 AND i.location_id = 1 AND i.batch_no = 'BATCH-SHIP-GT3-202606'
+JOIN wms_outbound_order o ON (
+  (o.order_no = 'STO-OUT-202606110001' AND sn.sn_code IN ('SN-SHIP-GT3-0001','SN-SHIP-GT3-0002','SN-SHIP-GT3-0003','SN-SHIP-GT3-0004'))
+  OR (o.order_no = 'SO-OUT-202606110002' AND sn.sn_code IN ('SN-SHIP-GT3-0006','SN-SHIP-GT3-0007','SN-SHIP-GT3-0008','SN-SHIP-GT3-0009','SN-SHIP-GT3-0010'))
+)
+JOIN wms_outbound_order_detail d ON d.order_id = o.id AND d.product_id = sn.product_id;
+
+UPDATE wms_serial_number sn
+JOIN wms_inventory_allocation a ON a.sn_code = sn.sn_code
+SET sn.status = IF(a.allocation_status = 'PICKED', 'PICKED', 'ALLOCATED'),
+    sn.locked_flag = 1,
+    sn.locked_order_no = a.outbound_order_no,
+    sn.outbound_order_no = a.outbound_order_no
+WHERE a.outbound_order_no IN ('STO-OUT-202606110001', 'SO-OUT-202606110002');
+
+INSERT INTO wms_picking_task (task_no, outbound_order_id, outbound_order_no, warehouse_id, location_id, product_id, plan_qty, picked_qty, status, picker, created_at)
+SELECT 'PICK-STO-OUT-202606110001', o.id, o.order_no, 1, 1, d.product_id, 4, 2, 'PICKING', 'wh_admin', DATE_SUB(NOW(), INTERVAL 2 HOUR)
+FROM wms_outbound_order o JOIN wms_outbound_order_detail d ON d.order_id = o.id
+WHERE o.order_no = 'STO-OUT-202606110001';
+INSERT INTO wms_picking_task (task_no, outbound_order_id, outbound_order_no, warehouse_id, location_id, product_id, plan_qty, picked_qty, status, picker, created_at)
+SELECT 'PICK-SO-OUT-202606110002', o.id, o.order_no, 1, 1, d.product_id, 5, 5, 'PICKED', 'wh_admin', DATE_SUB(NOW(), INTERVAL 6 HOUR)
+FROM wms_outbound_order o JOIN wms_outbound_order_detail d ON d.order_id = o.id
+WHERE o.order_no = 'SO-OUT-202606110002';
+
+INSERT INTO wms_picking_record (task_id, task_no, outbound_order_id, outbound_order_no, sn_code, location_id, picker, result, created_at)
+SELECT t.id, t.task_no, t.outbound_order_id, t.outbound_order_no, a.sn_code, 1, 'wh_admin', 'SUCCESS', DATE_SUB(NOW(), INTERVAL 2 HOUR)
+FROM wms_picking_task t
+JOIN wms_inventory_allocation a ON a.outbound_order_id = t.outbound_order_id
+WHERE a.allocation_status = 'PICKED' AND t.outbound_order_no IN ('STO-OUT-202606110001','SO-OUT-202606110002');
+
+INSERT INTO wms_shipment_record (shipment_no, outbound_order_id, outbound_order_no, carrier, tracking_no, shipped_qty, shipper, ship_time, shipment_status, sap_post_status, sap_material_doc_no, sap_post_result, remark, created_at)
+SELECT 'SHP-SO-OUT-202606110002-01', id, order_no, 'SF', 'SF202606110002', 2, 'logistics', DATE_SUB(NOW(), INTERVAL 1 HOUR), 'SHIPPED', 'SUCCESS', '4900009002', 'SAP 出库扣减成功 4900009002', '部分发运批次', DATE_SUB(NOW(), INTERVAL 1 HOUR)
+FROM wms_outbound_order WHERE order_no = 'SO-OUT-202606110002';
+
+INSERT INTO wms_interface_log (interface_name, source_system, target_system, business_doc_no, http_method, request_url, request_body, response_body, status, retry_count, error_message, created_at) VALUES
+('FULFILLMENT_ORDER_PUSH', 'FULFILLMENT', 'WMS', 'SO-OUT-202606110001', 'POST', '/api/mock/fulfillment/outbound-orders', JSON_OBJECT('sourceOrderNo', 'FUL-SO-202606110001'), JSON_OBJECT('shipmentOrderNo', 'SO-OUT-202606110001'), 'SUCCESS', 0, NULL, DATE_SUB(NOW(), INTERVAL 30 MINUTE)),
+('SAP_STO_PUSH', 'SAP', 'WMS', 'STO-OUT-202606110001', 'POST', '/api/mock/sap/sto-orders', JSON_OBJECT('sourceOrderNo', 'STO202606110001'), JSON_OBJECT('shipmentOrderNo', 'STO-OUT-202606110001'), 'SUCCESS', 0, NULL, DATE_SUB(NOW(), INTERVAL 20 MINUTE)),
+('SAP_OUTBOUND_POSTING', 'WMS', 'SAP', 'SO-OUT-202606110002', 'POST', '/api/mock/sap/material-documents', JSON_OBJECT('shipmentNo', 'SHP-SO-OUT-202606110002-01'), JSON_OBJECT('sapMaterialDocNo', '4900009002'), 'SUCCESS', 0, NULL, DATE_SUB(NOW(), INTERVAL 1 HOUR));
+
 INSERT INTO wms_outbound_status_history (outbound_order_id, outbound_order_no, from_status, to_status, action, operator, message, created_at)
 SELECT id, order_no, NULL, status, 'SEED_STATUS', 'system', '婕旂ず鏁版嵁鍒濆鍖?, created_at
 FROM wms_outbound_order;

@@ -9,6 +9,8 @@ DROP TABLE IF EXISTS wms_mock_config;
 DROP TABLE IF EXISTS wms_outbound_status_history;
 DROP TABLE IF EXISTS wms_outbound_exception;
 DROP TABLE IF EXISTS wms_inventory_transaction;
+DROP TABLE IF EXISTS outbound_shipment_sn;
+DROP TABLE IF EXISTS outbound_shipment_line;
 DROP TABLE IF EXISTS wms_shipment_record;
 DROP TABLE IF EXISTS wms_outbound_review_record;
 DROP TABLE IF EXISTS wms_picking_record;
@@ -154,6 +156,8 @@ CREATE TABLE wms_inventory (
   area_id BIGINT NOT NULL,
   location_id BIGINT NOT NULL,
   product_id BIGINT NOT NULL,
+  owner_code VARCHAR(64) NULL,
+  owner_name VARCHAR(128) NULL,
   batch_no VARCHAR(64) NULL,
   inventory_status VARCHAR(32) NOT NULL DEFAULT 'QUALIFIED',
   total_qty INT NOT NULL DEFAULT 0,
@@ -177,6 +181,8 @@ CREATE TABLE wms_serial_number (
   id BIGINT PRIMARY KEY AUTO_INCREMENT,
   sn_code VARCHAR(128) NOT NULL UNIQUE,
   product_id BIGINT NOT NULL,
+  owner_code VARCHAR(64) NULL,
+  owner_name VARCHAR(128) NULL,
   mes_work_order_no VARCHAR(64) NULL,
   warehouse_id BIGINT NULL,
   location_id BIGINT NULL,
@@ -328,6 +334,17 @@ CREATE TABLE wms_outbound_order (
   warehouse_id BIGINT NOT NULL,
   target_warehouse_id BIGINT NULL,
   customer_id BIGINT NULL,
+  owner_code VARCHAR(64) NULL,
+  owner_name VARCHAR(128) NULL,
+  consignee_code VARCHAR(64) NULL,
+  consignee_name VARCHAR(128) NULL,
+  expected_ship_time DATETIME NULL,
+  related_order_no VARCHAR(64) NULL,
+  sales_order_no VARCHAR(64) NULL,
+  rework_order_no VARCHAR(64) NULL,
+  target_owner_code VARCHAR(64) NULL,
+  target_owner_name VARCHAR(128) NULL,
+  required_delivery_time DATETIME NULL,
   planned_qty INT NOT NULL DEFAULT 0,
   allocated_qty INT NOT NULL DEFAULT 0,
   picked_qty INT NOT NULL DEFAULT 0,
@@ -335,12 +352,17 @@ CREATE TABLE wms_outbound_order (
   shipped_qty INT NOT NULL DEFAULT 0,
   status VARCHAR(32) NOT NULL DEFAULT 'PENDING_ALLOC',
   logistics_company VARCHAR(64) NULL,
+  carrier_name VARCHAR(128) NULL,
   tracking_no VARCHAR(64) NULL,
   shipper VARCHAR(64) NULL,
   ship_time DATETIME NULL,
   sap_material_doc_no VARCHAR(64) NULL,
   sap_post_status VARCHAR(32) NULL,
+  sap_post_result VARCHAR(512) NULL,
   trace_post_status VARCHAR(32) NULL,
+  parent_order_no VARCHAR(64) NULL,
+  split_flag TINYINT(1) NOT NULL DEFAULT 0,
+  deleted_flag TINYINT(1) NOT NULL DEFAULT 0,
   remark VARCHAR(255) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
@@ -355,6 +377,9 @@ CREATE TABLE wms_outbound_order_detail (
   line_no INT NOT NULL,
   product_id BIGINT NOT NULL,
   planned_qty INT NOT NULL,
+  sap_plant VARCHAR(32) NULL,
+  unit VARCHAR(32) NULL,
+  sn_required TINYINT(1) NOT NULL DEFAULT 0,
   allocated_qty INT NOT NULL DEFAULT 0,
   picked_qty INT NOT NULL DEFAULT 0,
   review_qty INT NOT NULL DEFAULT 0,
@@ -376,7 +401,7 @@ CREATE TABLE wms_inventory_allocation (
   location_id BIGINT NOT NULL,
   product_id BIGINT NOT NULL,
   batch_no VARCHAR(64) NULL,
-  sn_code VARCHAR(128) NOT NULL,
+  sn_code VARCHAR(128) NULL,
   allocated_qty INT NOT NULL DEFAULT 1,
   allocation_mode VARCHAR(32) NOT NULL DEFAULT 'AUTO',
   allocation_status VARCHAR(32) NOT NULL DEFAULT 'ALLOCATED',
@@ -458,9 +483,48 @@ CREATE TABLE wms_shipment_record (
   shipped_qty INT NOT NULL DEFAULT 0,
   shipper VARCHAR(64) NOT NULL,
   ship_time DATETIME NOT NULL,
+  shipment_status VARCHAR(32) NOT NULL DEFAULT 'SHIPPED',
+  sap_post_status VARCHAR(32) NOT NULL DEFAULT 'NOT_POSTED',
+  sap_material_doc_no VARCHAR(64) NULL,
+  sap_post_result VARCHAR(512) NULL,
   remark VARCHAR(255) NULL,
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_shipment_order FOREIGN KEY (outbound_order_id) REFERENCES wms_outbound_order(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE outbound_shipment_line (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  shipment_id BIGINT NOT NULL,
+  outbound_order_line_id BIGINT NOT NULL,
+  line_no INT NOT NULL,
+  product_id BIGINT NOT NULL,
+  product_code VARCHAR(64) NOT NULL,
+  ship_qty INT NOT NULL DEFAULT 0,
+  sap_post_qty INT NOT NULL DEFAULT 0,
+  sap_post_status VARCHAR(32) NOT NULL DEFAULT 'NOT_POSTED',
+  sap_material_doc_no VARCHAR(64) NULL,
+  sap_post_result VARCHAR(512) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_ship_line_shipment FOREIGN KEY (shipment_id) REFERENCES wms_shipment_record(id),
+  CONSTRAINT fk_ship_line_order_line FOREIGN KEY (outbound_order_line_id) REFERENCES wms_outbound_order_detail(id),
+  CONSTRAINT fk_ship_line_product FOREIGN KEY (product_id) REFERENCES md_product(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE outbound_shipment_sn (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  shipment_id BIGINT NOT NULL,
+  shipment_line_id BIGINT NOT NULL,
+  sn_code VARCHAR(128) NOT NULL,
+  product_id BIGINT NOT NULL,
+  outbound_order_line_id BIGINT NOT NULL,
+  pallet_code VARCHAR(64) NULL,
+  box_code VARCHAR(64) NULL,
+  location_code VARCHAR(64) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_ship_sn_shipment FOREIGN KEY (shipment_id) REFERENCES wms_shipment_record(id),
+  CONSTRAINT fk_ship_sn_line FOREIGN KEY (shipment_line_id) REFERENCES outbound_shipment_line(id),
+  CONSTRAINT fk_ship_sn_order_line FOREIGN KEY (outbound_order_line_id) REFERENCES wms_outbound_order_detail(id),
+  CONSTRAINT fk_ship_sn_product FOREIGN KEY (product_id) REFERENCES md_product(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE wms_inventory_transaction (

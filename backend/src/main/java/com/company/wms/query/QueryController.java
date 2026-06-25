@@ -28,6 +28,7 @@ public class QueryController {
   @GetMapping("/api/inventory")
   public ApiResponse<PageResult<Map<String, Object>>> inventory(
       @RequestParam(required = false) String warehouseCode,
+      @RequestParam(required = false) String ownerCode,
       @RequestParam(required = false) String locationCode,
       @RequestParam(required = false) String productCode,
       @RequestParam(required = false) String batchNo,
@@ -37,6 +38,7 @@ public class QueryController {
   ) {
     Map<String, Object> params = new HashMap<>();
     params.put("warehouseCode", repo.like(warehouseCode));
+    params.put("ownerCode", repo.like(ownerCode));
     params.put("locationCode", repo.like(locationCode));
     params.put("productCode", repo.like(productCode));
     params.put("batchNo", repo.like(batchNo));
@@ -48,6 +50,7 @@ public class QueryController {
         JOIN wms_location l ON l.id = i.location_id
         JOIN md_product p ON p.id = i.product_id
         WHERE (:warehouseCode IS NULL OR w.warehouse_code LIKE :warehouseCode)
+          AND (:ownerCode IS NULL OR p.owner_code LIKE :ownerCode OR p.owner_name LIKE :ownerCode)
           AND (:locationCode IS NULL OR l.location_code LIKE :locationCode)
           AND (:productCode IS NULL OR p.product_code LIKE :productCode)
           AND (:batchNo IS NULL OR i.batch_no LIKE :batchNo)
@@ -56,7 +59,7 @@ public class QueryController {
     return ApiResponse.ok(repo.page(
         """
         SELECT i.*, w.warehouse_code, w.warehouse_name, a.area_code, a.area_name,
-               l.location_code, p.product_code, p.product_name, p.safety_stock, p.aging_threshold_days,
+               l.location_code, p.owner_code, p.owner_name, p.product_code, p.product_name, p.safety_stock, p.aging_threshold_days,
                CASE WHEN i.available_qty < p.safety_stock THEN 1 ELSE 0 END AS low_stock,
                CASE WHEN DATEDIFF(CURDATE(), i.inbound_date) > p.aging_threshold_days THEN 1 ELSE 0 END AS aged
         """ + from + " ORDER BY low_stock DESC, aged DESC, i.id DESC",
@@ -70,6 +73,7 @@ public class QueryController {
   @GetMapping("/api/serial-numbers")
   public ApiResponse<PageResult<Map<String, Object>>> serialNumbers(
       @RequestParam(required = false) String snCode,
+      @RequestParam(required = false) String ownerCode,
       @RequestParam(required = false) String productCode,
       @RequestParam(required = false) String palletCode,
       @RequestParam(required = false) String boxCode,
@@ -79,6 +83,7 @@ public class QueryController {
   ) {
     Map<String, Object> params = new HashMap<>();
     params.put("snCode", repo.like(snCode));
+    params.put("ownerCode", repo.like(ownerCode));
     params.put("productCode", repo.like(productCode));
     params.put("palletCode", repo.like(palletCode));
     params.put("boxCode", repo.like(boxCode));
@@ -89,6 +94,7 @@ public class QueryController {
         LEFT JOIN wms_warehouse w ON w.id = s.warehouse_id
         LEFT JOIN wms_location l ON l.id = s.location_id
         WHERE (:snCode IS NULL OR s.sn_code LIKE :snCode)
+          AND (:ownerCode IS NULL OR p.owner_code LIKE :ownerCode OR p.owner_name LIKE :ownerCode)
           AND (:productCode IS NULL OR p.product_code LIKE :productCode)
           AND (:palletCode IS NULL OR s.pallet_code LIKE :palletCode)
           AND (:boxCode IS NULL OR s.box_code LIKE :boxCode)
@@ -96,7 +102,7 @@ public class QueryController {
         """;
     return ApiResponse.ok(repo.page(
         """
-        SELECT s.*, p.product_code, p.product_name, w.warehouse_code, w.warehouse_name, l.location_code
+        SELECT s.*, p.owner_code, p.owner_name, p.product_code, p.product_name, w.warehouse_code, w.warehouse_name, l.location_code
         """ + from + " ORDER BY s.id DESC",
         "SELECT COUNT(*) " + from,
         params,
@@ -301,7 +307,7 @@ public class QueryController {
     return page;
   }
 
-  @GetMapping("/api/outbound-orders")
+  @GetMapping("/api/outbound-orders-legacy")
   public ApiResponse<PageResult<Map<String, Object>>> outboundOrders(
       @RequestParam(required = false) String orderNo,
       @RequestParam(required = false) String sourceOrderNo,

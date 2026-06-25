@@ -16,6 +16,13 @@ import SnBindingPage from '../views/inbound/SnBindingPage.vue'
 import OutboundOrderPage from '../views/outbound/OutboundOrderPage.vue'
 import InterfaceLogPage from '../views/interfacecenter/InterfaceLogPage.vue'
 import UserPage from '../views/system/UserPage.vue'
+import InoutStockReport from '../views/reports/InoutStockReport.vue'
+import InboundDailyReport from '../views/reports/InboundDailyReport.vue'
+import OutboundDailyReport from '../views/reports/OutboundDailyReport.vue'
+import StandardAgingReport from '../views/reports/StandardAgingReport.vue'
+import SegmentAgingReport from '../views/reports/SegmentAgingReport.vue'
+import OutboundSnReport from '../views/reports/OutboundSnReport.vue'
+import InboundSnReport from '../views/reports/InboundSnReport.vue'
 
 const routes: RouteRecordRaw[] = [
   { path: '/login', component: Login, meta: { title: '登录' } },
@@ -44,6 +51,13 @@ const routes: RouteRecordRaw[] = [
       { path: 'outbound/picking', redirect: '/outbound/shipping-orders' },
       { path: 'outbound/review', redirect: '/outbound/shipping-orders' },
       { path: 'outbound/shipping', redirect: '/outbound/shipping-orders' },
+      { path: 'reports/inout-stock', component: InoutStockReport, meta: { title: '进出存报表' } },
+      { path: 'reports/inbound-daily', component: InboundDailyReport, meta: { title: '入库日报表' } },
+      { path: 'reports/outbound-daily', component: OutboundDailyReport, meta: { title: '出库日报表' } },
+      { path: 'reports/standard-aging', component: StandardAgingReport, meta: { title: '标准库龄报表' } },
+      { path: 'reports/segment-aging', component: SegmentAgingReport, meta: { title: '分段库龄报表' } },
+      { path: 'reports/outbound-sn', component: OutboundSnReport, meta: { title: '出库 SN 报表' } },
+      { path: 'reports/inbound-sn', component: InboundSnReport, meta: { title: '入库 SN 报表' } },
       { path: 'interface/logs', component: InterfaceLogPage, meta: { title: '接口日志' } },
       { path: 'system/users', component: UserPage, meta: { title: '系统用户' } }
     ]

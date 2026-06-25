@@ -61,6 +61,20 @@ public class InboundController {
     return ApiResponse.ok(service.receive(id, request));
   }
 
+  @PostMapping({"/api/inbound-orders/{id}/cancel", "/api/inbound/arrival-notices/{id}/cancel"})
+  public ApiResponse<Map<String, Object>> cancel(@PathVariable long id, @RequestBody(required = false) Map<String, Object> body) {
+    return ApiResponse.ok(service.cancel(id, body == null ? Map.of() : body));
+  }
+
+  @PostMapping({"/api/inbound-orders/{id}/receipts/{receiptId}/cancel", "/api/inbound/arrival-notices/{id}/receipts/{receiptId}/cancel"})
+  public ApiResponse<Map<String, Object>> cancelReceipt(
+      @PathVariable long id,
+      @PathVariable long receiptId,
+      @RequestBody(required = false) Map<String, Object> body
+  ) {
+    return ApiResponse.ok(service.cancelReceipt(id, receiptId, body == null ? Map.of() : body));
+  }
+
   @PostMapping({"/api/inbound/production-orders/{id}/bind-package", "/api/inbound-orders/{id}/bind-package", "/api/inbound/arrival-notices/{id}/bind-package"})
   public ApiResponse<Map<String, Object>> bindPackage(@PathVariable long id, @RequestBody BindPackageRequest request) {
     return ApiResponse.ok(service.bindPackage(id, request));

@@ -17,6 +17,8 @@ const statusOptions = ['ISSUED', 'INBOUND', 'ON_SHELF', 'ALLOCATED', 'PICKED', '
 
 const columns = [
   { prop: 'sn_code', label: 'SN', width: 170 },
+  { prop: 'owner_code', label: '货主', width: 120 },
+  { prop: 'owner_name', label: '货主名称', width: 160 },
   { prop: 'product_code', label: '产品编码', width: 170 },
   { prop: 'product_name', label: '产品名称', width: 170 },
   { prop: 'warehouse_code', label: '仓库', width: 150 },
@@ -31,10 +33,10 @@ const columns = [
 
 const searchFields = [
   { prop: 'snCode', label: 'SN' },
+  { prop: 'ownerCode', label: '货主' },
   { prop: 'productCode', label: '产品编码' },
   { prop: 'palletCode', label: '托盘码' },
   { prop: 'boxCode', label: '箱码' },
   { prop: 'status', label: '状态', type: 'select', options: statusOptions }
 ]
 </script>
-

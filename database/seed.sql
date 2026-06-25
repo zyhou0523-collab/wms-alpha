@@ -1,147 +1,4 @@
-USE wms_alpha;
-
-SET FOREIGN_KEY_CHECKS = 0;
-TRUNCATE TABLE wms_operation_log;
-TRUNCATE TABLE wms_interface_log;
-TRUNCATE TABLE wms_mock_config;
-TRUNCATE TABLE wms_outbound_status_history;
-TRUNCATE TABLE wms_outbound_exception;
-TRUNCATE TABLE wms_inventory_transaction;
-TRUNCATE TABLE wms_shipment_record;
-TRUNCATE TABLE wms_outbound_review_record;
-TRUNCATE TABLE wms_picking_record;
-TRUNCATE TABLE wms_picking_task;
-TRUNCATE TABLE wms_inventory_allocation;
-TRUNCATE TABLE wms_outbound_order_detail;
-TRUNCATE TABLE wms_outbound_order;
-TRUNCATE TABLE wms_inbound_receipt_sn;
-TRUNCATE TABLE wms_inbound_receipt_line;
-TRUNCATE TABLE wms_inbound_receipt;
-TRUNCATE TABLE wms_inbound_order_detail;
-TRUNCATE TABLE wms_inbound_order;
-TRUNCATE TABLE wms_package_binding;
-TRUNCATE TABLE wms_serial_number;
-TRUNCATE TABLE wms_inventory;
-TRUNCATE TABLE wms_location;
-TRUNCATE TABLE wms_area;
-TRUNCATE TABLE wms_warehouse;
-TRUNCATE TABLE md_supplier;
-TRUNCATE TABLE md_customer;
-TRUNCATE TABLE md_product;
-TRUNCATE TABLE sys_user;
-SET FOREIGN_KEY_CHECKS = 1;
-
-INSERT INTO sys_user (username, password_hash, display_name, role_code, role_name, warehouse_scope, status) VALUES
-('admin', 'admin123', '系统管理员', 'ADMIN', '系统管理员', '*', 'ACTIVE'),
-('wh_admin', '123456', '仓库管理员', 'WAREHOUSE_ADMIN', '仓库管理员', 'WH-HZ-CENTRAL,WH-SH-REGION', 'ACTIVE'),
-('planner', '123456', '计划人员', 'PLANNER', '计划人员', '*', 'ACTIVE'),
-('logistics', '123456', '物流人员', 'LOGISTICS', '物流人员', 'WH-HZ-CENTRAL,WH-SH-REGION', 'ACTIVE'),
-('aftersale', '123456', '售后人员', 'AFTERSALE', '售后人员', 'WH-SZ-AFTERSALE', 'ACTIVE'),
-('manager', '123456', '管理层', 'MANAGER', '管理层', '*', 'ACTIVE');
-
-INSERT INTO md_product (product_code, product_name, category, spec_model, unit, sn_managed, battery_flag, shelf_life_days, safety_stock, aging_threshold_days, status) VALUES
-('GT3-30KD1R11001', '工商业储能电池包', '成品', 'GT3-30K-D1R1', 'PCS', 1, 1, 730, 20, 180, 'ACTIVE'),
-('GT3-50KD1R11002', '户用储能电池包', '成品', 'GT3-50K-D1R1', 'PCS', 1, 1, 730, 15, 180, 'ACTIVE'),
-('INV-10K-AC001', '储能逆变器 10K', '成品', 'INV-10K-AC', 'PCS', 1, 0, 365, 10, 150, 'ACTIVE'),
-('INV-20K-AC002', '储能逆变器 20K', '成品', 'INV-20K-AC', 'PCS', 1, 0, 365, 8, 150, 'ACTIVE'),
-('PCS-100K-001', 'PCS 变流器 100K', '成品', 'PCS-100K', 'PCS', 1, 0, 365, 5, 120, 'ACTIVE'),
-('BMS-MAIN-001', 'BMS 主控板', '备件', 'BMS-MAIN', 'PCS', 1, 0, 365, 30, 240, 'ACTIVE'),
-('CABLE-HV-001', '高压线束', '备件', 'HV-CABLE', 'PCS', 0, 0, 365, 50, 240, 'ACTIVE'),
-('FAN-DC-001', '直流散热风扇', '备件', 'DC-FAN', 'PCS', 0, 0, 365, 40, 240, 'ACTIVE'),
-('FUSE-500A-001', '500A 熔断器', '备件', 'FUSE-500A', 'PCS', 0, 0, 365, 60, 240, 'ACTIVE'),
-('PACK-COVER-001', '电池包上盖', '备件', 'PACK-COVER', 'PCS', 0, 0, 365, 20, 240, 'DISABLED');
-
-INSERT INTO md_product (product_code, product_name, category, spec_model, unit, sn_managed, battery_flag, shelf_life_days, safety_stock, aging_threshold_days, status) VALUES
-('BLF51-5R31101', '电池模块备件', '备件', 'BLF51-5R3', 'PCS', 1, 1, 730, 10, 180, 'ACTIVE'),
-('HP3-12KD2R11101', '逆变器成品', '成品', 'HP3-12K-D2R1', 'PCS', 1, 0, 365, 10, 150, 'ACTIVE'),
-('GT3-20KD1R11001', '储能电池包 20K', '成品', 'GT3-20K-D1R1', 'PCS', 1, 1, 730, 10, 180, 'ACTIVE'),
-('GT3-10KD1R11001', '储能电池包 10K', '成品', 'GT3-10K-D1R1', 'PCS', 1, 1, 730, 10, 180, 'ACTIVE'),
-('SP-BMS-001', 'BMS 控制板', '供应商 VMI 物料', 'SP-BMS', 'PCS', 1, 0, 365, 20, 240, 'ACTIVE'),
-('SP-CABLE-001', '高压线束', '供应商 VMI 物料', 'SP-CABLE', 'PCS', 1, 0, 365, 30, 240, 'ACTIVE');
-
-INSERT INTO md_product (
-  owner_code, owner_name, product_code, product_name, product_name_en,
-  category, spec_model, product_family, product_class, unit, sn_managed,
-  battery_flag, shelf_life_days, safety_stock, aging_threshold_days, status
-) VALUES
-('1000', '海兴电力', 'GT3-10KD1R11004', '三相并网逆变器', 'Three-phase Grid-tied Inverter', '成品', 'GT3-10K-D1R1', '逆变器', '并网逆变器', 'PCS', 1, 0, 365, 10, 150, 'ACTIVE'),
-('1000', '海兴电力', 'HXEDE081R10002', '电表模块', 'Meter Module', '成品', 'HXEDE081R1', '电表', '计量模块', 'PCS', 0, 0, 365, 20, 180, 'ACTIVE'),
-('1000', '海兴电力', 'LHECCHR11002', '充电模块', 'Charging Module', '成品', 'LHECCHR1', '充电', '充电模块', 'PCS', 0, 0, 365, 20, 180, 'ACTIVE'),
-('1000', '海兴电力', 'BHF-B10250R11001', '储能电池包', 'Battery Pack', '成品', 'BHF-B10250R1', '电池', '储能电池包', 'PCS', 1, 1, 730, 10, 180, 'ACTIVE'),
-('3060', '杭州利沃得', 'GT3-10KD1R11004', '三相并网逆变器', 'Three-phase Grid-tied Inverter', '成品', 'GT3-10K-D1R1', '逆变器', '并网逆变器', 'PCS', 1, 0, 365, 10, 150, 'ACTIVE'),
-('3060', '杭州利沃得', 'HXEDE081R10002', '电表模块', 'Meter Module', '成品', 'HXEDE081R1', '电表', '计量模块', 'PCS', 0, 0, 365, 20, 180, 'ACTIVE'),
-('3060', '杭州利沃得', 'LHECCHR11002', '充电模块', 'Charging Module', '成品', 'LHECCHR1', '充电', '充电模块', 'PCS', 0, 0, 365, 20, 180, 'ACTIVE'),
-('3060', '杭州利沃得', 'BHF-B10250R11001', '储能电池包', 'Battery Pack', '成品', 'BHF-B10250R1', '电池', '储能电池包', 'PCS', 1, 1, 730, 10, 180, 'ACTIVE');
-
-INSERT INTO md_customer (customer_code, customer_name, customer_type, country_region, contact_name, contact_phone, delivery_address, vmi_flag, status) VALUES
-('CUST-TESLA-001', 'Tesla Energy China', '直销客户', '中国', '王经理', '13800000001', '上海临港新能源园区', 1, 'ACTIVE'),
-('CUST-BYD-002', '比亚迪储能事业部', '直销客户', '中国', '李经理', '13800000002', '深圳坪山区', 1, 'ACTIVE'),
-('CUST-SG-003', 'State Grid Demo', '渠道客户', '中国', '赵经理', '13800000003', '北京海淀区', 0, 'ACTIVE'),
-('CUST-EU-004', 'EU Solar Partner', '海外客户', '德国', 'Anna', '+49-10001', 'Berlin Demo Street 1', 0, 'ACTIVE'),
-('CUST-AU-005', 'AU Energy Storage', '海外客户', '澳大利亚', 'Smith', '+61-10002', 'Sydney Demo Road 2', 0, 'ACTIVE');
-
-UPDATE md_customer SET customer_type = 'CUSTOMER';
-
-INSERT INTO md_customer (customer_code, customer_name, customer_type, country_region, contact_name, contact_phone, delivery_address, vmi_flag, status) VALUES
-('1000', '海兴电力', 'OWNER', '中国', '', '', '', 0, 'ACTIVE'),
-('3060', '杭州利沃得', 'OWNER', '中国', '', '', '', 0, 'ACTIVE'),
-('SUP-CATL-001', 'CATL 供应商', 'SUPPLIER', '中国', '张工', '13900000001', '', 1, 'ACTIVE'),
-('SUP-BYD-001', 'BYD 供应商', 'SUPPLIER', '中国', '李工', '13900000002', '', 0, 'ACTIVE'),
-('SUP-VMI-001', 'VMI 供应商A', 'SUPPLIER', '中国', '王工', '13900000003', '', 1, 'ACTIVE');
-
-INSERT INTO md_supplier (supplier_code, supplier_name, supplier_type, contact_name, contact_phone, vmi_flag, status) VALUES
-('SUP-CATL-001', '宁德时代电芯供应商', '电芯供应商', '张工', '13900000001', 1, 'ACTIVE'),
-('SUP-EVE-002', '亿纬锂能供应商', '电芯供应商', '刘工', '13900000002', 0, 'ACTIVE'),
-('SUP-FOX-003', '结构件供应商', '结构件', '陈工', '13900000003', 0, 'ACTIVE'),
-('SUP-DHL-004', 'DHL 仓储物流', '物流服务商', 'DHL Ops', '13900000004', 0, 'ACTIVE'),
-('SUP-SF-005', '顺丰供应链', '物流服务商', 'SF Ops', '13900000005', 0, 'ACTIVE');
-
-INSERT INTO wms_warehouse (warehouse_code, warehouse_name, warehouse_type, region, country, city, owner_type, owner_code, own_flag, vmi_flag, status) VALUES
-('WH-HZ-CENTRAL', '杭州集团总仓', '集团总仓', '华东', '中国', '杭州', 'SELF', NULL, 1, 0, 'ACTIVE'),
-('WH-SH-REGION', '上海区域销售仓', '区域销售仓', '华东', '中国', '上海', 'SELF', NULL, 1, 0, 'ACTIVE'),
-('WH-GZ-3PL', '广州第三方仓', '第三方仓', '华南', '中国', '广州', 'SUPPLIER', 'SUP-DHL-004', 0, 0, 'ACTIVE'),
-('WH-SZ-AFTERSALE', '深圳售后仓', '售后仓', '华南', '中国', '深圳', 'SELF', NULL, 1, 0, 'ACTIVE'),
-('WH-CUST-TESLA-VMI', 'Tesla 客户 VMI 仓', '客户 VMI 仓', '华东', '中国', '上海', 'CUSTOMER', 'CUST-TESLA-001', 0, 1, 'ACTIVE'),
-('WH-SUP-CATL-VMI', 'CATL 供应商 VMI 仓', '供应商 VMI 仓', '华东', '中国', '宁德', 'SUPPLIER', 'SUP-CATL-001', 0, 1, 'ACTIVE');
-
-INSERT INTO wms_area (warehouse_id, area_code, area_name, area_type, quality_status_limit, status) VALUES
-(1, 'AREA-GOOD-01', '良品区', 'GOOD', 'QUALIFIED', 'ACTIVE'),
-(1, 'AREA-QC-01', '待检区', 'QC', 'PENDING', 'ACTIVE'),
-(2, 'AREA-GOOD-01', '良品区', 'GOOD', 'QUALIFIED', 'ACTIVE'),
-(2, 'AREA-QC-01', '待检区', 'QC', 'PENDING', 'ACTIVE'),
-(3, 'AREA-GOOD-01', '良品区', 'GOOD', 'QUALIFIED', 'ACTIVE'),
-(3, 'AREA-QC-01', '待检区', 'QC', 'PENDING', 'ACTIVE'),
-(4, 'AREA-GOOD-01', '售后良品区', 'GOOD', 'QUALIFIED', 'ACTIVE'),
-(4, 'AREA-REPAIR-01', '待修区', 'REPAIR', 'PENDING', 'ACTIVE'),
-(4, 'AREA-SCRAP-01', '报废区', 'SCRAP', 'UNQUALIFIED', 'ACTIVE'),
-(5, 'AREA-GOOD-01', '客户 VMI 良品区', 'GOOD', 'QUALIFIED', 'ACTIVE'),
-(5, 'AREA-QC-01', '客户 VMI 待检区', 'QC', 'PENDING', 'ACTIVE'),
-(6, 'AREA-GOOD-01', '供应商 VMI 良品区', 'GOOD', 'QUALIFIED', 'ACTIVE'),
-(6, 'AREA-QC-01', '供应商 VMI 待检区', 'QC', 'PENDING', 'ACTIVE');
-
-INSERT INTO wms_location (warehouse_id, area_id, location_code, location_name, rack_no, level_no, column_no, capacity, frozen_flag, status)
-WITH RECURSIVE seq(n) AS (
-  SELECT 1 UNION ALL SELECT n + 1 FROM seq WHERE n < 30
-)
-SELECT
-  ((n - 1) % 6) + 1,
-  CASE ((n - 1) % 6) + 1
-    WHEN 1 THEN IF(n % 5 = 0, 2, 1)
-    WHEN 2 THEN IF(n % 5 = 0, 4, 3)
-    WHEN 3 THEN IF(n % 5 = 0, 6, 5)
-    WHEN 4 THEN IF(n % 5 = 0, 8, 7)
-    WHEN 5 THEN IF(n % 5 = 0, 11, 10)
-    ELSE IF(n % 5 = 0, 13, 12)
-  END,
-  CONCAT(CHAR(64 + (((n - 1) % 6) + 1)), LPAD(((n - 1) % 5) + 1, 2, '0'), '-01-', LPAD(n, 2, '0')),
-  CONCAT('标准库位-', LPAD(n, 2, '0')),
-  CONCAT('R', LPAD(((n - 1) % 5) + 1, 2, '0')),
-  CONCAT('L', ((n - 1) % 3) + 1),
-  CONCAT('C', LPAD(n, 2, '0')),
-  100,
-  IF(n IN (7, 18), 1, 0),
-  'ACTIVE'
-FROM seq;
+﻿USE wms_alpha;
 
 INSERT INTO wms_inventory (warehouse_id, area_id, location_id, product_id, batch_no, inventory_status, total_qty, available_qty, allocated_qty, frozen_qty, unqualified_qty, inbound_date, vmi_flag) VALUES
 (1, 1, 1, 1, 'BATCH-OUT-DEMO', 'QUALIFIED', 42, 30, 7, 0, 0, DATE_SUB(CURDATE(), INTERVAL 40 DAY), 0),
@@ -243,8 +100,8 @@ LIMIT 40;
 
 INSERT INTO wms_inbound_order (order_no, source_order_no, mes_work_order_no, inbound_type, source_system, warehouse_id, supplier_id, customer_id, planned_qty, received_qty, status, sap_material_doc_no, sap_post_status, remark, created_at)
 VALUES
-('IN202606110001', 'MO202606110001', 'MES-MO-202606110001', 'PRODUCTION', 'SAP', 1, NULL, NULL, 10, 0, 'CREATED', NULL, NULL, '生产入库演示单', DATE_SUB(NOW(), INTERVAL 1 DAY)),
-('IN202606110002', 'ASN202606110002', 'MES-MO-202606110002', 'STOCKING', 'FULFILLMENT', 2, 1, NULL, 12, 12, 'CLOSED', '5000000002', 'POSTED', '备货入库演示单', DATE_SUB(NOW(), INTERVAL 2 DAY));
+('IN202606110001', 'MO202606110001', 'MES-MO-202606110001', 'PRODUCTION', 'SAP', 1, NULL, NULL, 10, 0, 'CREATED', NULL, NULL, '鐢熶骇鍏ュ簱婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 1 DAY)),
+('IN202606110002', 'ASN202606110002', 'MES-MO-202606110002', 'STOCKING', 'FULFILLMENT', 2, 1, NULL, 12, 12, 'CLOSED', '5000000002', 'POSTED', '澶囪揣鍏ュ簱婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 2 DAY));
 
 INSERT INTO wms_inbound_order_detail (order_id, line_no, product_id, planned_qty, received_qty, shelved_qty, batch_no, quality_status)
 SELECT id, 1, IF(order_no = 'IN202606110001', 1, 2), planned_qty, received_qty,
@@ -272,9 +129,9 @@ INSERT INTO wms_inbound_order (
   warehouse_id, supplier_id, customer_id, planned_qty, received_qty, status,
   sap_material_doc_no, sap_post_status, sap_post_result, remark, created_at
 ) VALUES
-('IN202606110100', 'MO202606110100', 'MES-MO-202606110100', 'PRODUCTION', 'SAP', 1, NULL, NULL, 23, 2, 'PARTIAL_RECEIVED', NULL, 'FAILED', 'SAP 回传失败：物料移动类型缺失', '多行生产入库演示单', DATE_SUB(NOW(), INTERVAL 3 HOUR)),
-('IN202606110101', 'STOCK202606110101', 'MES-STOCK202606110101', 'STOCKING', 'FULFILLMENT', 2, NULL, NULL, 10, 0, 'CREATED', NULL, 'NOT_POSTED', '', '多行备货入库演示单', DATE_SUB(NOW(), INTERVAL 2 HOUR)),
-('IN202606110102', 'POVMI202606110102', 'MES-POVMI202606110102', 'SUPPLIER_VMI', 'SAP', 6, 1, NULL, 50, 0, 'CREATED', NULL, 'NOT_POSTED', '', '多行供应商 VMI 入库演示单', DATE_SUB(NOW(), INTERVAL 1 HOUR));
+('IN202606110100', 'MO202606110100', 'MES-MO-202606110100', 'PRODUCTION', 'SAP', 1, NULL, NULL, 23, 2, 'PARTIAL_RECEIVED', NULL, 'FAILED', 'SAP 鍥炰紶澶辫触锛氱墿鏂欑Щ鍔ㄧ被鍨嬬己澶?, '澶氳鐢熶骇鍏ュ簱婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 3 HOUR)),
+('IN202606110101', 'STOCK202606110101', 'MES-STOCK202606110101', 'STOCKING', 'FULFILLMENT', 2, NULL, NULL, 10, 0, 'CREATED', NULL, 'NOT_POSTED', '', '澶氳澶囪揣鍏ュ簱婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+('IN202606110102', 'POVMI202606110102', 'MES-POVMI202606110102', 'SUPPLIER_VMI', 'SAP', 6, 1, NULL, 50, 0, 'CREATED', NULL, 'NOT_POSTED', '', '澶氳渚涘簲鍟?VMI 鍏ュ簱婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 1 HOUR));
 
 INSERT INTO wms_inbound_order_detail (order_id, line_no, product_id, planned_qty, received_qty, shelved_qty, batch_no, quality_status, status)
 SELECT o.id, 10, p.id, 10, 2, 0, 'BATCH-IN202606110100-10', 'QUALIFIED', 'PARTIAL_RECEIVED'
@@ -313,19 +170,19 @@ INSERT INTO wms_inbound_order (
   status, sap_post_status, sap_post_result, remark, created_by, updated_by, created_at
 ) VALUES (
   'IN-DEMO-SN-MIX-001', 'MO-DEMO-SN-MIX-001', 'MES-DEMO-SN-MIX-001',
-  'PRODUCTION', 'SAP', 1, '3060', '杭州利沃得', '3060', 12, 0,
-  'CREATED', 'NOT_POSTED', '', 'SN/非SN混合收货演示单', 'wh_admin', 'wh_admin', NOW()
+  'PRODUCTION', 'SAP', 1, '3060', '鏉窞鍒╂矁寰?, '3060', 12, 0,
+  'CREATED', 'NOT_POSTED', '', 'SN/闈濻N娣峰悎鏀惰揣婕旂ず鍗?, 'wh_admin', 'wh_admin', NOW()
 );
 
 UPDATE wms_inbound_order
 SET ship_from_country = CASE order_no
-  WHEN 'IN202606110001' THEN '中国'
-  WHEN 'IN202606110002' THEN '美国'
-  WHEN 'IN202606110100' THEN '德国'
-  WHEN 'IN202606110101' THEN '越南'
-  WHEN 'IN202606110102' THEN '泰国'
-  WHEN 'IN-DEMO-SN-MIX-001' THEN '中国'
-  ELSE COALESCE(ship_from_country, '中国')
+  WHEN 'IN202606110001' THEN '涓浗'
+  WHEN 'IN202606110002' THEN '缇庡浗'
+  WHEN 'IN202606110100' THEN '寰峰浗'
+  WHEN 'IN202606110101' THEN '瓒婂崡'
+  WHEN 'IN202606110102' THEN '娉板浗'
+  WHEN 'IN-DEMO-SN-MIX-001' THEN '涓浗'
+  ELSE COALESCE(ship_from_country, '涓浗')
 END;
 
 INSERT INTO wms_inbound_order_detail (
@@ -398,11 +255,11 @@ FROM wms_serial_number
 WHERE sn_code LIKE 'SN-IN10%';
 
 INSERT INTO wms_inbound_receipt (receipt_no, inbound_order_id, inbound_order_no, receipt_time, receipt_user, status, sap_post_status, sap_post_result, created_at)
-SELECT 'RCV20260611010001', id, order_no, DATE_SUB(NOW(), INTERVAL 90 MINUTE), 'wh_admin', 'RECEIVED', 'FAILED', 'SAP 回传失败：物料移动类型缺失', DATE_SUB(NOW(), INTERVAL 90 MINUTE)
+SELECT 'RCV20260611010001', id, order_no, DATE_SUB(NOW(), INTERVAL 90 MINUTE), 'wh_admin', 'RECEIVED', 'FAILED', 'SAP 鍥炰紶澶辫触锛氱墿鏂欑Щ鍔ㄧ被鍨嬬己澶?, DATE_SUB(NOW(), INTERVAL 90 MINUTE)
 FROM wms_inbound_order
 WHERE order_no = 'IN202606110100';
 INSERT INTO wms_inbound_receipt_line (receipt_id, inbound_order_line_id, line_no, product_id, product_code, receive_qty, sap_post_qty, sap_post_status, sap_post_result)
-SELECT r.id, d.id, d.line_no, d.product_id, p.product_code, 2, 0, 'FAILED', 'SAP 回传失败：物料移动类型缺失'
+SELECT r.id, d.id, d.line_no, d.product_id, p.product_code, 2, 0, 'FAILED', 'SAP 鍥炰紶澶辫触锛氱墿鏂欑Щ鍔ㄧ被鍨嬬己澶?
 FROM wms_inbound_receipt r
 JOIN wms_inbound_order_detail d ON d.order_id = r.inbound_order_id AND d.line_no = 10
 JOIN md_product p ON p.id = d.product_id
@@ -419,14 +276,14 @@ INSERT INTO wms_outbound_order (
   planned_qty, allocated_qty, picked_qty, review_qty, shipped_qty, status,
   logistics_company, tracking_no, shipper, ship_time, sap_material_doc_no, sap_post_status, trace_post_status, remark, created_at
 ) VALUES
-('OUT202606120001', 'SO202606120001', 'FULFILLMENT', 'SALES', 1, NULL, 1, 5, 0, 0, 0, 0, 'PENDING_ALLOC', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '销售出库完整演示起点', DATE_SUB(NOW(), INTERVAL 2 HOUR)),
-('OUT202606120002', 'SO202606120002', 'FULFILLMENT', 'SALES', 1, NULL, 2, 4, 4, 0, 0, 0, 'ALLOCATED', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '已分配销售单，可演示生成拣货任务', DATE_SUB(NOW(), INTERVAL 1 DAY)),
-('OUT202606120003', 'SO202606120003', 'FULFILLMENT', 'SALES', 1, NULL, 3, 3, 3, 3, 3, 0, 'REVIEWED', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '已复核销售单，可直接演示发货', DATE_SUB(NOW(), INTERVAL 2 DAY)),
-('OUT202606120004', 'STO202606120004', 'SAP', 'TRANSFER', 1, 2, NULL, 6, 0, 0, 0, 0, 'PENDING_ALLOC', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '集团总仓调拨至上海区域仓', DATE_SUB(NOW(), INTERVAL 3 HOUR)),
-('OUT202606120005', 'STO202606120005', 'SAP', 'TRANSFER', 1, 2, NULL, 5, 5, 5, 5, 5, 'CALLBACK_SUCCESS', 'SF', 'SF202606120005', 'logistics', DATE_SUB(NOW(), INTERVAL 3 DAY), '4900000005', 'POSTED', 'POSTED', '已发货调拨历史单', DATE_SUB(NOW(), INTERVAL 4 DAY)),
-('OUT202606120006', 'AS202606120006', 'CRM', 'AFTERSALE', 4, NULL, 1, 2, 2, 1, 0, 0, 'PICKING', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '售后发货演示单', DATE_SUB(NOW(), INTERVAL 5 HOUR)),
-('OUT202606120007', 'SO202606120007', 'FULFILLMENT', 'SALES', 2, NULL, 4, 2, 2, 2, 2, 2, 'CALLBACK_SUCCESS', 'DHL', 'DHL202606120007', 'logistics', DATE_SUB(NOW(), INTERVAL 4 DAY), '4900000007', 'POSTED', 'POSTED', '历史销售发货记录', DATE_SUB(NOW(), INTERVAL 5 DAY)),
-('OUT202606120008', 'SO202606120008', 'FULFILLMENT', 'SALES', 3, NULL, 5, 1, 1, 1, 1, 1, 'CALLBACK_FAILED', 'SF', 'SF202606120008', 'logistics', DATE_SUB(NOW(), INTERVAL 5 DAY), NULL, 'FAILED', 'POSTED', 'SAP 扣减失败演示单', DATE_SUB(NOW(), INTERVAL 6 DAY));
+('OUT202606120001', 'SO202606120001', 'FULFILLMENT', 'SALES', 1, NULL, 1, 5, 0, 0, 0, 0, 'PENDING_ALLOC', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '閿€鍞嚭搴撳畬鏁存紨绀鸿捣鐐?, DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+('OUT202606120002', 'SO202606120002', 'FULFILLMENT', 'SALES', 1, NULL, 2, 4, 4, 0, 0, 0, 'ALLOCATED', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '宸插垎閰嶉攢鍞崟锛屽彲婕旂ず鐢熸垚鎷ｈ揣浠诲姟', DATE_SUB(NOW(), INTERVAL 1 DAY)),
+('OUT202606120003', 'SO202606120003', 'FULFILLMENT', 'SALES', 1, NULL, 3, 3, 3, 3, 3, 0, 'REVIEWED', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '宸插鏍搁攢鍞崟锛屽彲鐩存帴婕旂ず鍙戣揣', DATE_SUB(NOW(), INTERVAL 2 DAY)),
+('OUT202606120004', 'STO202606120004', 'SAP', 'TRANSFER', 1, 2, NULL, 6, 0, 0, 0, 0, 'PENDING_ALLOC', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '闆嗗洟鎬讳粨璋冩嫧鑷充笂娴峰尯鍩熶粨', DATE_SUB(NOW(), INTERVAL 3 HOUR)),
+('OUT202606120005', 'STO202606120005', 'SAP', 'TRANSFER', 1, 2, NULL, 5, 5, 5, 5, 5, 'CALLBACK_SUCCESS', 'SF', 'SF202606120005', 'logistics', DATE_SUB(NOW(), INTERVAL 3 DAY), '4900000005', 'POSTED', 'POSTED', '宸插彂璐ц皟鎷ㄥ巻鍙插崟', DATE_SUB(NOW(), INTERVAL 4 DAY)),
+('OUT202606120006', 'AS202606120006', 'CRM', 'AFTERSALE', 4, NULL, 1, 2, 2, 1, 0, 0, 'PICKING', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '鍞悗鍙戣揣婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 5 HOUR)),
+('OUT202606120007', 'SO202606120007', 'FULFILLMENT', 'SALES', 2, NULL, 4, 2, 2, 2, 2, 2, 'CALLBACK_SUCCESS', 'DHL', 'DHL202606120007', 'logistics', DATE_SUB(NOW(), INTERVAL 4 DAY), '4900000007', 'POSTED', 'POSTED', '鍘嗗彶閿€鍞彂璐ц褰?, DATE_SUB(NOW(), INTERVAL 5 DAY)),
+('OUT202606120008', 'SO202606120008', 'FULFILLMENT', 'SALES', 3, NULL, 5, 1, 1, 1, 1, 1, 'CALLBACK_FAILED', 'SF', 'SF202606120008', 'logistics', DATE_SUB(NOW(), INTERVAL 5 DAY), NULL, 'FAILED', 'POSTED', 'SAP 鎵ｅ噺澶辫触婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 6 DAY));
 
 INSERT INTO wms_outbound_order_detail (order_id, line_no, product_id, planned_qty, allocated_qty, picked_qty, review_qty, shipped_qty, batch_no, status)
 SELECT id, 1,
@@ -500,23 +357,23 @@ JOIN wms_inventory_allocation a ON a.outbound_order_id = o.id
 WHERE o.order_no IN ('OUT202606120003', 'OUT202606120005');
 
 INSERT INTO wms_shipment_record (shipment_no, outbound_order_id, outbound_order_no, carrier, tracking_no, shipped_qty, shipper, ship_time, remark, created_at)
-SELECT 'SHIP202606120001', id, order_no, 'SF', 'SF202606120005', 3, 'logistics', DATE_SUB(NOW(), INTERVAL 3 DAY), '调拨发货第一批', DATE_SUB(NOW(), INTERVAL 3 DAY)
+SELECT 'SHIP202606120001', id, order_no, 'SF', 'SF202606120005', 3, 'logistics', DATE_SUB(NOW(), INTERVAL 3 DAY), '璋冩嫧鍙戣揣绗竴鎵?, DATE_SUB(NOW(), INTERVAL 3 DAY)
 FROM wms_outbound_order WHERE order_no = 'OUT202606120005';
 INSERT INTO wms_shipment_record (shipment_no, outbound_order_id, outbound_order_no, carrier, tracking_no, shipped_qty, shipper, ship_time, remark, created_at)
-SELECT 'SHIP202606120002', id, order_no, 'DHL', 'DHL202606120007', 2, 'logistics', DATE_SUB(NOW(), INTERVAL 4 DAY), '海外销售发货', DATE_SUB(NOW(), INTERVAL 4 DAY)
+SELECT 'SHIP202606120002', id, order_no, 'DHL', 'DHL202606120007', 2, 'logistics', DATE_SUB(NOW(), INTERVAL 4 DAY), '娴峰閿€鍞彂璐?, DATE_SUB(NOW(), INTERVAL 4 DAY)
 FROM wms_outbound_order WHERE order_no = 'OUT202606120007';
 INSERT INTO wms_shipment_record (shipment_no, outbound_order_id, outbound_order_no, carrier, tracking_no, shipped_qty, shipper, ship_time, remark, created_at)
-SELECT 'SHIP202606120003', id, order_no, 'SF', 'SF202606120008', 1, 'logistics', DATE_SUB(NOW(), INTERVAL 5 DAY), 'SAP 失败演示', DATE_SUB(NOW(), INTERVAL 5 DAY)
+SELECT 'SHIP202606120003', id, order_no, 'SF', 'SF202606120008', 1, 'logistics', DATE_SUB(NOW(), INTERVAL 5 DAY), 'SAP 澶辫触婕旂ず', DATE_SUB(NOW(), INTERVAL 5 DAY)
 FROM wms_outbound_order WHERE order_no = 'OUT202606120008';
 INSERT INTO wms_shipment_record (shipment_no, outbound_order_id, outbound_order_no, carrier, tracking_no, shipped_qty, shipper, ship_time, remark, created_at)
-SELECT 'SHIP202606120004', id, order_no, 'SF', 'SF202606120005-2', 2, 'logistics', DATE_SUB(NOW(), INTERVAL 2 DAY), '调拨发货第二批', DATE_SUB(NOW(), INTERVAL 2 DAY)
+SELECT 'SHIP202606120004', id, order_no, 'SF', 'SF202606120005-2', 2, 'logistics', DATE_SUB(NOW(), INTERVAL 2 DAY), '璋冩嫧鍙戣揣绗簩鎵?, DATE_SUB(NOW(), INTERVAL 2 DAY)
 FROM wms_outbound_order WHERE order_no = 'OUT202606120005';
 INSERT INTO wms_shipment_record (shipment_no, outbound_order_id, outbound_order_no, carrier, tracking_no, shipped_qty, shipper, ship_time, remark, created_at)
-SELECT 'SHIP202606120005', id, order_no, 'SF', 'SF202606120006', 1, 'logistics', DATE_SUB(NOW(), INTERVAL 1 HOUR), '售后部分发货演示', DATE_SUB(NOW(), INTERVAL 1 HOUR)
+SELECT 'SHIP202606120005', id, order_no, 'SF', 'SF202606120006', 1, 'logistics', DATE_SUB(NOW(), INTERVAL 1 HOUR), '鍞悗閮ㄥ垎鍙戣揣婕旂ず', DATE_SUB(NOW(), INTERVAL 1 HOUR)
 FROM wms_outbound_order WHERE order_no = 'OUT202606120006';
 
 INSERT INTO wms_inventory_transaction (transaction_no, transaction_type, business_doc_no, warehouse_id, location_id, product_id, sn_code, batch_no, qty, before_qty, after_qty, operator, remark, created_at)
-SELECT CONCAT('TXN-', o.order_no, '-', a.sn_code), 'OUTBOUND_SHIP', o.order_no, o.warehouse_id, a.location_id, a.product_id, a.sn_code, a.batch_no, -1, NULL, NULL, 'logistics', '发货扣减库存', DATE_SUB(NOW(), INTERVAL 3 DAY)
+SELECT CONCAT('TXN-', o.order_no, '-', a.sn_code), 'OUTBOUND_SHIP', o.order_no, o.warehouse_id, a.location_id, a.product_id, a.sn_code, a.batch_no, -1, NULL, NULL, 'logistics', '鍙戣揣鎵ｅ噺搴撳瓨', DATE_SUB(NOW(), INTERVAL 3 DAY)
 FROM wms_outbound_order o
 JOIN wms_inventory_allocation a ON a.outbound_order_id = o.id
 WHERE o.order_no = 'OUT202606120005';
@@ -525,40 +382,149 @@ INSERT INTO wms_interface_log (interface_name, source_system, target_system, bus
 ('TRACE_OUTBOUND_SN', 'WMS', 'TRACE', 'OUT202606120005', 'POST', '/api/mock/trace/outbound-sn', JSON_OBJECT('snCount', 5), JSON_OBJECT('traceStatus', 'RECEIVED'), 'SUCCESS', 0, NULL, DATE_SUB(NOW(), INTERVAL 3 DAY)),
 ('TRACE_OUTBOUND_SN', 'WMS', 'TRACE', 'OUT202606120007', 'POST', '/api/mock/trace/outbound-sn', JSON_OBJECT('snCount', 2), JSON_OBJECT('traceStatus', 'RECEIVED'), 'SUCCESS', 0, NULL, DATE_SUB(NOW(), INTERVAL 4 DAY)),
 ('TRACE_OUTBOUND_SN', 'WMS', 'TRACE', 'OUT202606120008', 'POST', '/api/mock/trace/outbound-sn', JSON_OBJECT('snCount', 1), JSON_OBJECT('traceStatus', 'RECEIVED'), 'SUCCESS', 0, NULL, DATE_SUB(NOW(), INTERVAL 5 DAY)),
-('TRACE_OUTBOUND_SN', 'WMS', 'TRACE', 'OUT202606120003', 'POST', '/api/mock/trace/outbound-sn', JSON_OBJECT('snCount', 3), JSON_OBJECT('traceStatus', 'PENDING'), 'WARNING', 0, '待发货确认后回传', DATE_SUB(NOW(), INTERVAL 2 HOUR)),
-('TRACE_OUTBOUND_SN', 'WMS', 'TRACE', 'OUT202606120006', 'POST', '/api/mock/trace/outbound-sn', JSON_OBJECT('snCount', 1), JSON_OBJECT('traceStatus', 'FAILED'), 'FAILED', 2, '追溯服务模拟超时', DATE_SUB(NOW(), INTERVAL 1 HOUR)),
+('TRACE_OUTBOUND_SN', 'WMS', 'TRACE', 'OUT202606120003', 'POST', '/api/mock/trace/outbound-sn', JSON_OBJECT('snCount', 3), JSON_OBJECT('traceStatus', 'PENDING'), 'WARNING', 0, '寰呭彂璐х‘璁ゅ悗鍥炰紶', DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+('TRACE_OUTBOUND_SN', 'WMS', 'TRACE', 'OUT202606120006', 'POST', '/api/mock/trace/outbound-sn', JSON_OBJECT('snCount', 1), JSON_OBJECT('traceStatus', 'FAILED'), 'FAILED', 2, '杩芥函鏈嶅姟妯℃嫙瓒呮椂', DATE_SUB(NOW(), INTERVAL 1 HOUR)),
 ('SAP_OUTBOUND_POSTING', 'WMS', 'SAP', 'OUT202606120005', 'POST', '/api/mock/sap/material-documents', JSON_OBJECT('qty', 5), JSON_OBJECT('sapMaterialDocNo', '4900000005'), 'SUCCESS', 0, NULL, DATE_SUB(NOW(), INTERVAL 3 DAY)),
 ('SAP_OUTBOUND_POSTING', 'WMS', 'SAP', 'OUT202606120007', 'POST', '/api/mock/sap/material-documents', JSON_OBJECT('qty', 2), JSON_OBJECT('sapMaterialDocNo', '4900000007'), 'SUCCESS', 0, NULL, DATE_SUB(NOW(), INTERVAL 4 DAY)),
-('SAP_OUTBOUND_POSTING', 'WMS', 'SAP', 'OUT202606120008', 'POST', '/api/mock/sap/material-documents', JSON_OBJECT('qty', 1), JSON_OBJECT('sapMaterialDocNo', NULL), 'FAILED', 2, 'SAP 库存地点不存在', DATE_SUB(NOW(), INTERVAL 5 DAY)),
-('SAP_OUTBOUND_POSTING', 'WMS', 'SAP', 'OUT202606120003', 'POST', '/api/mock/sap/material-documents', JSON_OBJECT('qty', 3), JSON_OBJECT('postingStatus', 'PENDING'), 'WARNING', 0, '待发货确认后过账', DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+('SAP_OUTBOUND_POSTING', 'WMS', 'SAP', 'OUT202606120008', 'POST', '/api/mock/sap/material-documents', JSON_OBJECT('qty', 1), JSON_OBJECT('sapMaterialDocNo', NULL), 'FAILED', 2, 'SAP 搴撳瓨鍦扮偣涓嶅瓨鍦?, DATE_SUB(NOW(), INTERVAL 5 DAY)),
+('SAP_OUTBOUND_POSTING', 'WMS', 'SAP', 'OUT202606120003', 'POST', '/api/mock/sap/material-documents', JSON_OBJECT('qty', 3), JSON_OBJECT('postingStatus', 'PENDING'), 'WARNING', 0, '寰呭彂璐х‘璁ゅ悗杩囪处', DATE_SUB(NOW(), INTERVAL 2 HOUR)),
 ('SAP_OUTBOUND_POSTING', 'WMS', 'SAP', 'OUT202606120006', 'POST', '/api/mock/sap/material-documents', JSON_OBJECT('qty', 1), JSON_OBJECT('sapMaterialDocNo', '4900000006'), 'SUCCESS', 0, NULL, DATE_SUB(NOW(), INTERVAL 1 HOUR)),
 ('FULFILLMENT_ORDER_PUSH', 'FULFILLMENT', 'WMS', 'OUT202606120001', 'POST', '/api/mock/fulfillment/outbound-orders', JSON_OBJECT('sourceOrderNo', 'SO202606120001'), JSON_OBJECT('outboundOrderNo', 'OUT202606120001'), 'SUCCESS', 0, NULL, DATE_SUB(NOW(), INTERVAL 2 HOUR));
 
 INSERT INTO wms_mock_config (interface_name, target_system, enabled, force_fail, delay_ms, failure_message, updated_by) VALUES
-('SAP_INBOUND_POSTING', 'SAP', 1, 0, 120, 'SAP 入库过账 Mock 失败', 'system'),
-('SAP_OUTBOUND_POSTING', 'SAP', 1, 0, 120, 'SAP 出库扣减 Mock 失败', 'system'),
-('TRACE_OUTBOUND_SN', 'TRACE', 1, 0, 120, '追溯系统 Mock 超时', 'system'),
-('MES_SN_PUSH', 'WMS', 1, 0, 80, 'MES SN 下发 Mock 失败', 'system'),
-('FULFILLMENT_ORDER_PUSH', 'WMS', 1, 0, 100, '履约单据下发 Mock 失败', 'system');
+('SAP_INBOUND_POSTING', 'SAP', 1, 0, 120, 'SAP 鍏ュ簱杩囪处 Mock 澶辫触', 'system'),
+('SAP_OUTBOUND_POSTING', 'SAP', 1, 0, 120, 'SAP 鍑哄簱鎵ｅ噺 Mock 澶辫触', 'system'),
+('TRACE_OUTBOUND_SN', 'TRACE', 1, 0, 120, '杩芥函绯荤粺 Mock 瓒呮椂', 'system'),
+('MES_SN_PUSH', 'WMS', 1, 0, 80, 'MES SN 涓嬪彂 Mock 澶辫触', 'system'),
+('FULFILLMENT_ORDER_PUSH', 'WMS', 1, 0, 100, '灞ョ害鍗曟嵁涓嬪彂 Mock 澶辫触', 'system');
 
 INSERT INTO wms_outbound_exception (exception_no, outbound_order_id, outbound_order_no, task_no, sn_code, exception_type, message, status, operator, created_at)
-SELECT 'EXC202606120001', id, order_no, NULL, NULL, 'INSUFFICIENT_STOCK', '可用库存不足，无法分配 20 个 SN', 'OPEN', 'system', DATE_SUB(NOW(), INTERVAL 3 HOUR)
+SELECT 'EXC202606120001', id, order_no, NULL, NULL, 'INSUFFICIENT_STOCK', '鍙敤搴撳瓨涓嶈冻锛屾棤娉曞垎閰?20 涓?SN', 'OPEN', 'system', DATE_SUB(NOW(), INTERVAL 3 HOUR)
 FROM wms_outbound_order WHERE order_no = 'OUT202606120001';
 INSERT INTO wms_outbound_exception (exception_no, outbound_order_id, outbound_order_no, task_no, sn_code, exception_type, message, status, operator, created_at)
-SELECT 'EXC202606120002', id, order_no, 'PICK202606120001', 'SN-BAD-0006', 'SN_UNQUALIFIED', '不合格 SN 不允许分配或拣货', 'OPEN', 'wh_admin', DATE_SUB(NOW(), INTERVAL 2 HOUR)
+SELECT 'EXC202606120002', id, order_no, 'PICK202606120001', 'SN-BAD-0006', 'SN_UNQUALIFIED', '涓嶅悎鏍?SN 涓嶅厑璁稿垎閰嶆垨鎷ｈ揣', 'OPEN', 'wh_admin', DATE_SUB(NOW(), INTERVAL 2 HOUR)
 FROM wms_outbound_order WHERE order_no = 'OUT202606120002';
 INSERT INTO wms_outbound_exception (exception_no, outbound_order_id, outbound_order_no, task_no, sn_code, exception_type, message, status, operator, created_at)
-SELECT 'EXC202606120003', id, order_no, 'PICK202606120001', 'SN-OUT-0030', 'SN_MISMATCH', '该 SN 不属于当前出库单分配范围', 'OPEN', 'wh_admin', DATE_SUB(NOW(), INTERVAL 1 HOUR)
+SELECT 'EXC202606120003', id, order_no, 'PICK202606120001', 'SN-OUT-0030', 'SN_MISMATCH', '璇?SN 涓嶅睘浜庡綋鍓嶅嚭搴撳崟鍒嗛厤鑼冨洿', 'OPEN', 'wh_admin', DATE_SUB(NOW(), INTERVAL 1 HOUR)
 FROM wms_outbound_order WHERE order_no = 'OUT202606120002';
 
 INSERT INTO wms_operation_log (module, business_doc_no, action, operator, result, message, created_at) VALUES
-('INBOUND', 'IN202606110001', 'CREATE_PRODUCTION_ORDER', 'system', 'SUCCESS', 'SAP Mock 创建生产入库单', DATE_SUB(NOW(), INTERVAL 1 DAY)),
-('OUTBOUND', 'OUT202606120001', 'CREATE_OUTBOUND_ORDER', 'system', 'SUCCESS', '履约系统下发销售订单', DATE_SUB(NOW(), INTERVAL 2 HOUR)),
-('OUTBOUND', 'OUT202606120002', 'ALLOCATE_AUTO', 'wh_admin', 'SUCCESS', '系统自动分配 4 个 SN', DATE_SUB(NOW(), INTERVAL 1 DAY)),
-('OUTBOUND', 'OUT202606120003', 'REVIEW_SN', 'logistics', 'SUCCESS', '出库复核完成', DATE_SUB(NOW(), INTERVAL 20 HOUR)),
-('OUTBOUND', 'OUT202606120005', 'SHIP_CONFIRM', 'logistics', 'SUCCESS', '发货确认并触发追溯/SAP 回传', DATE_SUB(NOW(), INTERVAL 3 DAY)),
-('OUTBOUND', 'OUT202606120008', 'SAP_OUTBOUND_POSTING', 'system', 'FAILED', 'SAP 库存地点不存在', DATE_SUB(NOW(), INTERVAL 5 DAY));
+('INBOUND', 'IN202606110001', 'CREATE_PRODUCTION_ORDER', 'system', 'SUCCESS', 'SAP Mock 鍒涘缓鐢熶骇鍏ュ簱鍗?, DATE_SUB(NOW(), INTERVAL 1 DAY)),
+('OUTBOUND', 'OUT202606120001', 'CREATE_OUTBOUND_ORDER', 'system', 'SUCCESS', '灞ョ害绯荤粺涓嬪彂閿€鍞鍗?, DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+('OUTBOUND', 'OUT202606120002', 'ALLOCATE_AUTO', 'wh_admin', 'SUCCESS', '绯荤粺鑷姩鍒嗛厤 4 涓?SN', DATE_SUB(NOW(), INTERVAL 1 DAY)),
+('OUTBOUND', 'OUT202606120003', 'REVIEW_SN', 'logistics', 'SUCCESS', '鍑哄簱澶嶆牳瀹屾垚', DATE_SUB(NOW(), INTERVAL 20 HOUR)),
+('OUTBOUND', 'OUT202606120005', 'SHIP_CONFIRM', 'logistics', 'SUCCESS', '鍙戣揣纭骞惰Е鍙戣拷婧?SAP 鍥炰紶', DATE_SUB(NOW(), INTERVAL 3 DAY)),
+('OUTBOUND', 'OUT202606120008', 'SAP_OUTBOUND_POSTING', 'system', 'FAILED', 'SAP 搴撳瓨鍦扮偣涓嶅瓨鍦?, DATE_SUB(NOW(), INTERVAL 5 DAY));
+
+-- 发运订单模块 v0.7 演示数据：销售 / 调拨 / STO / 部分发运
+INSERT INTO wms_inventory (warehouse_id, area_id, location_id, product_id, batch_no, inventory_status, total_qty, available_qty, allocated_qty, frozen_qty, unqualified_qty, inbound_date)
+SELECT 1, 1, 1, p.id, 'BATCH-SHIP-GT3-202606', 'QUALIFIED', 40, 35, 0, 0, 0, '2026-04-01'
+FROM md_product p WHERE p.product_code = 'GT3-10KD1R11004' LIMIT 1;
+INSERT INTO wms_inventory (warehouse_id, area_id, location_id, product_id, batch_no, inventory_status, total_qty, available_qty, allocated_qty, frozen_qty, unqualified_qty, inbound_date)
+SELECT 1, 1, 1, p.id, 'BATCH-SHIP-HXEDE-202606', 'QUALIFIED', 80, 80, 0, 0, 0, '2026-04-03'
+FROM md_product p WHERE p.product_code = 'HXEDE081R10002' LIMIT 1;
+INSERT INTO wms_inventory (warehouse_id, area_id, location_id, product_id, batch_no, inventory_status, total_qty, available_qty, allocated_qty, frozen_qty, unqualified_qty, inbound_date)
+SELECT 1, 1, 2, p.id, 'BATCH-SHIP-FROZEN-202606', 'QUALIFIED', 5, 0, 0, 5, 0, '2026-03-20'
+FROM md_product p WHERE p.product_code = 'GT3-10KD1R11004' LIMIT 1;
+
+INSERT INTO wms_serial_number (sn_code, product_id, warehouse_id, location_id, pallet_code, box_code, status, quality_status, locked_flag, inbound_order_no, created_at)
+SELECT CONCAT('SN-SHIP-GT3-', LPAD(seq.n, 4, '0')), p.id, 1, 1, CONCAT('PLT-SHIP-', LPAD(CEIL(seq.n / 10), 3, '0')), CONCAT('BOX-SHIP-', LPAD(CEIL(seq.n / 5), 3, '0')), 'ON_SHELF', 'QUALIFIED', 0, 'IN-SHIP-DEMO', DATE_SUB(NOW(), INTERVAL seq.n DAY)
+FROM (
+  SELECT 1 n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5
+  UNION ALL SELECT 6 UNION ALL SELECT 7 UNION ALL SELECT 8 UNION ALL SELECT 9 UNION ALL SELECT 10
+  UNION ALL SELECT 11 UNION ALL SELECT 12 UNION ALL SELECT 13 UNION ALL SELECT 14 UNION ALL SELECT 15
+) seq
+JOIN md_product p ON p.product_code = 'GT3-10KD1R11004';
+INSERT INTO wms_serial_number (sn_code, product_id, warehouse_id, location_id, pallet_code, box_code, status, quality_status, locked_flag, locked_order_no, inbound_order_no, created_at)
+SELECT CONCAT('SN-SHIP-BAD-', LPAD(seq.n, 4, '0')), p.id, 1, 2, 'PLT-SHIP-FROZEN', 'BOX-SHIP-FROZEN', 'ON_SHELF', IF(seq.n <= 3, 'UNQUALIFIED', 'QUALIFIED'), IF(seq.n = 5, 1, 0), IF(seq.n = 5, 'OTHER-LOCK', NULL), 'IN-SHIP-BAD', NOW()
+FROM (SELECT 1 n UNION ALL SELECT 2 UNION ALL SELECT 3 UNION ALL SELECT 4 UNION ALL SELECT 5) seq
+JOIN md_product p ON p.product_code = 'GT3-10KD1R11004';
+
+INSERT INTO wms_outbound_order (
+  order_no, source_order_no, source_system, outbound_type, warehouse_id, target_warehouse_id, customer_id,
+  owner_code, owner_name, consignee_code, consignee_name, expected_ship_time, related_order_no, sales_order_no,
+  target_owner_code, target_owner_name, required_delivery_time, planned_qty, allocated_qty, picked_qty, review_qty, shipped_qty,
+  status, logistics_company, carrier_name, tracking_no, sap_post_status, sap_post_result, parent_order_no, split_flag, remark, created_at
+) VALUES
+('SO-OUT-202606110001', 'FUL-SO-202606110001', 'FULFILLMENT', 'SALES_OUTBOUND', 1, NULL, 1, '3060', '杭州利沃得', 'CUST-TESLA-001', 'Tesla Energy China', DATE_ADD(NOW(), INTERVAL 1 DAY), 'FUL-SO-202606110001', 'SO202606110001', NULL, NULL, DATE_ADD(NOW(), INTERVAL 2 DAY), 8, 0, 0, 0, 0, 'CREATED', NULL, NULL, NULL, 'NOT_POSTED', '', NULL, 0, '销售出库完整闭环演示起点', DATE_SUB(NOW(), INTERVAL 30 MINUTE)),
+('TR-OUT-202606110001', 'TR202606110001', 'WMS', 'WAREHOUSE_TRANSFER', 1, 2, NULL, '3060', '杭州利沃得', NULL, NULL, DATE_ADD(NOW(), INTERVAL 1 DAY), 'TR202606110001', NULL, '3060', '上海区域仓货主', DATE_ADD(NOW(), INTERVAL 2 DAY), 6, 0, 0, 0, 0, 'CREATED', NULL, NULL, NULL, 'NOT_POSTED', '', NULL, 0, '杭州总仓调拨至上海区域仓', DATE_SUB(NOW(), INTERVAL 25 MINUTE)),
+('STO-OUT-202606110001', 'STO202606110001', 'SAP', 'STO_OUTBOUND', 1, 2, NULL, '3060', '杭州利沃得', NULL, NULL, DATE_ADD(NOW(), INTERVAL 1 DAY), 'STO202606110001', NULL, '3060', '上海区域仓货主', DATE_ADD(NOW(), INTERVAL 2 DAY), 4, 4, 2, 0, 0, 'PARTIAL_PICKED', NULL, NULL, NULL, 'NOT_POSTED', '', NULL, 0, 'STO 出库部分拣货演示', DATE_SUB(NOW(), INTERVAL 20 MINUTE)),
+('SO-OUT-202606110002', 'FUL-SO-202606110002', 'FULFILLMENT', 'SALES_OUTBOUND', 1, NULL, 2, '3060', '杭州利沃得', 'CUST-BYD-002', '比亚迪储能事业部', DATE_SUB(NOW(), INTERVAL 1 DAY), 'FUL-SO-202606110002', 'SO202606110002', NULL, NULL, DATE_ADD(NOW(), INTERVAL 1 DAY), 5, 5, 5, 0, 2, 'PARTIAL_SHIPPED', 'SF', 'SF', 'SF202606110002', 'SUCCESS', 'SAP 出库扣减成功 4900009002', NULL, 0, '部分发运关单生成分单演示', DATE_SUB(NOW(), INTERVAL 1 DAY));
+
+INSERT INTO wms_outbound_order_detail (order_id, line_no, product_id, planned_qty, sap_plant, unit, sn_required, allocated_qty, picked_qty, review_qty, shipped_qty, batch_no, status)
+SELECT o.id, 10, p.id, 3, '3060', 'PCS', 1, 0, 0, 0, 0, 'BATCH-SO-OUT-001-L10', 'CREATED'
+FROM wms_outbound_order o JOIN md_product p ON p.product_code = 'GT3-10KD1R11004'
+WHERE o.order_no = 'SO-OUT-202606110001';
+INSERT INTO wms_outbound_order_detail (order_id, line_no, product_id, planned_qty, sap_plant, unit, sn_required, allocated_qty, picked_qty, review_qty, shipped_qty, batch_no, status)
+SELECT o.id, 20, p.id, 5, '3060', 'PCS', 0, 0, 0, 0, 0, 'BATCH-SO-OUT-001-L20', 'CREATED'
+FROM wms_outbound_order o JOIN md_product p ON p.product_code = 'HXEDE081R10002'
+WHERE o.order_no = 'SO-OUT-202606110001';
+INSERT INTO wms_outbound_order_detail (order_id, line_no, product_id, planned_qty, sap_plant, unit, sn_required, allocated_qty, picked_qty, review_qty, shipped_qty, batch_no, status)
+SELECT o.id, 10, p.id, 2, '3060', 'PCS', 1, 0, 0, 0, 0, 'BATCH-TR-OUT-001-L10', 'CREATED'
+FROM wms_outbound_order o JOIN md_product p ON p.product_code = 'GT3-10KD1R11004'
+WHERE o.order_no = 'TR-OUT-202606110001';
+INSERT INTO wms_outbound_order_detail (order_id, line_no, product_id, planned_qty, sap_plant, unit, sn_required, allocated_qty, picked_qty, review_qty, shipped_qty, batch_no, status)
+SELECT o.id, 20, p.id, 4, '3060', 'PCS', 0, 0, 0, 0, 0, 'BATCH-TR-OUT-001-L20', 'CREATED'
+FROM wms_outbound_order o JOIN md_product p ON p.product_code = 'HXEDE081R10002'
+WHERE o.order_no = 'TR-OUT-202606110001';
+INSERT INTO wms_outbound_order_detail (order_id, line_no, product_id, planned_qty, sap_plant, unit, sn_required, allocated_qty, picked_qty, review_qty, shipped_qty, batch_no, status)
+SELECT o.id, 10, p.id, 4, '3060', 'PCS', 1, 4, 2, 0, 0, 'BATCH-STO-OUT-001-L10', 'PARTIAL_PICKED'
+FROM wms_outbound_order o JOIN md_product p ON p.product_code = 'GT3-10KD1R11004'
+WHERE o.order_no = 'STO-OUT-202606110001';
+INSERT INTO wms_outbound_order_detail (order_id, line_no, product_id, planned_qty, sap_plant, unit, sn_required, allocated_qty, picked_qty, review_qty, shipped_qty, batch_no, status)
+SELECT o.id, 10, p.id, 5, '3060', 'PCS', 1, 5, 5, 0, 2, 'BATCH-SO-OUT-002-L10', 'PARTIAL_SHIPPED'
+FROM wms_outbound_order o JOIN md_product p ON p.product_code = 'GT3-10KD1R11004'
+WHERE o.order_no = 'SO-OUT-202606110002';
+
+INSERT INTO wms_inventory_allocation (
+  allocation_no, outbound_order_id, outbound_order_no, outbound_detail_id, inventory_id, warehouse_id, location_id,
+  product_id, batch_no, sn_code, allocated_qty, allocation_mode, allocation_status, picker, picked_at, created_at
+)
+SELECT CONCAT('ALLOC-', o.order_no, '-', sn.sn_code), o.id, o.order_no, d.id, i.id, 1, 1, sn.product_id, i.batch_no, sn.sn_code, 1,
+       'AUTO_FIFO', IF(sn.sn_code IN ('SN-SHIP-GT3-0001','SN-SHIP-GT3-0002','SN-SHIP-GT3-0006','SN-SHIP-GT3-0007','SN-SHIP-GT3-0008','SN-SHIP-GT3-0009','SN-SHIP-GT3-0010'), 'PICKED', 'ALLOCATED'),
+       IF(sn.sn_code IN ('SN-SHIP-GT3-0001','SN-SHIP-GT3-0002','SN-SHIP-GT3-0006','SN-SHIP-GT3-0007','SN-SHIP-GT3-0008','SN-SHIP-GT3-0009','SN-SHIP-GT3-0010'), 'wh_admin', NULL),
+       IF(sn.sn_code IN ('SN-SHIP-GT3-0001','SN-SHIP-GT3-0002','SN-SHIP-GT3-0006','SN-SHIP-GT3-0007','SN-SHIP-GT3-0008','SN-SHIP-GT3-0009','SN-SHIP-GT3-0010'), DATE_SUB(NOW(), INTERVAL 2 HOUR), NULL),
+       DATE_SUB(NOW(), INTERVAL 2 HOUR)
+FROM wms_serial_number sn
+JOIN wms_inventory i ON i.product_id = sn.product_id AND i.warehouse_id = 1 AND i.location_id = 1 AND i.batch_no = 'BATCH-SHIP-GT3-202606'
+JOIN wms_outbound_order o ON (
+  (o.order_no = 'STO-OUT-202606110001' AND sn.sn_code IN ('SN-SHIP-GT3-0001','SN-SHIP-GT3-0002','SN-SHIP-GT3-0003','SN-SHIP-GT3-0004'))
+  OR (o.order_no = 'SO-OUT-202606110002' AND sn.sn_code IN ('SN-SHIP-GT3-0006','SN-SHIP-GT3-0007','SN-SHIP-GT3-0008','SN-SHIP-GT3-0009','SN-SHIP-GT3-0010'))
+)
+JOIN wms_outbound_order_detail d ON d.order_id = o.id AND d.product_id = sn.product_id;
+
+UPDATE wms_serial_number sn
+JOIN wms_inventory_allocation a ON a.sn_code = sn.sn_code
+SET sn.status = IF(a.allocation_status = 'PICKED', 'PICKED', 'ALLOCATED'),
+    sn.locked_flag = 1,
+    sn.locked_order_no = a.outbound_order_no,
+    sn.outbound_order_no = a.outbound_order_no
+WHERE a.outbound_order_no IN ('STO-OUT-202606110001', 'SO-OUT-202606110002');
+
+INSERT INTO wms_picking_task (task_no, outbound_order_id, outbound_order_no, warehouse_id, location_id, product_id, plan_qty, picked_qty, status, picker, created_at)
+SELECT 'PICK-STO-OUT-202606110001', o.id, o.order_no, 1, 1, d.product_id, 4, 2, 'PICKING', 'wh_admin', DATE_SUB(NOW(), INTERVAL 2 HOUR)
+FROM wms_outbound_order o JOIN wms_outbound_order_detail d ON d.order_id = o.id
+WHERE o.order_no = 'STO-OUT-202606110001';
+INSERT INTO wms_picking_task (task_no, outbound_order_id, outbound_order_no, warehouse_id, location_id, product_id, plan_qty, picked_qty, status, picker, created_at)
+SELECT 'PICK-SO-OUT-202606110002', o.id, o.order_no, 1, 1, d.product_id, 5, 5, 'PICKED', 'wh_admin', DATE_SUB(NOW(), INTERVAL 6 HOUR)
+FROM wms_outbound_order o JOIN wms_outbound_order_detail d ON d.order_id = o.id
+WHERE o.order_no = 'SO-OUT-202606110002';
+
+INSERT INTO wms_picking_record (task_id, task_no, outbound_order_id, outbound_order_no, sn_code, location_id, picker, result, created_at)
+SELECT t.id, t.task_no, t.outbound_order_id, t.outbound_order_no, a.sn_code, 1, 'wh_admin', 'SUCCESS', DATE_SUB(NOW(), INTERVAL 2 HOUR)
+FROM wms_picking_task t
+JOIN wms_inventory_allocation a ON a.outbound_order_id = t.outbound_order_id
+WHERE a.allocation_status = 'PICKED' AND t.outbound_order_no IN ('STO-OUT-202606110001','SO-OUT-202606110002');
+
+INSERT INTO wms_shipment_record (shipment_no, outbound_order_id, outbound_order_no, carrier, tracking_no, shipped_qty, shipper, ship_time, shipment_status, sap_post_status, sap_material_doc_no, sap_post_result, remark, created_at)
+SELECT 'SHP-SO-OUT-202606110002-01', id, order_no, 'SF', 'SF202606110002', 2, 'logistics', DATE_SUB(NOW(), INTERVAL 1 HOUR), 'SHIPPED', 'SUCCESS', '4900009002', 'SAP 出库扣减成功 4900009002', '部分发运批次', DATE_SUB(NOW(), INTERVAL 1 HOUR)
+FROM wms_outbound_order WHERE order_no = 'SO-OUT-202606110002';
+
+INSERT INTO wms_interface_log (interface_name, source_system, target_system, business_doc_no, http_method, request_url, request_body, response_body, status, retry_count, error_message, created_at) VALUES
+('FULFILLMENT_ORDER_PUSH', 'FULFILLMENT', 'WMS', 'SO-OUT-202606110001', 'POST', '/api/mock/fulfillment/outbound-orders', JSON_OBJECT('sourceOrderNo', 'FUL-SO-202606110001'), JSON_OBJECT('shipmentOrderNo', 'SO-OUT-202606110001'), 'SUCCESS', 0, NULL, DATE_SUB(NOW(), INTERVAL 30 MINUTE)),
+('SAP_STO_PUSH', 'SAP', 'WMS', 'STO-OUT-202606110001', 'POST', '/api/mock/sap/sto-orders', JSON_OBJECT('sourceOrderNo', 'STO202606110001'), JSON_OBJECT('shipmentOrderNo', 'STO-OUT-202606110001'), 'SUCCESS', 0, NULL, DATE_SUB(NOW(), INTERVAL 20 MINUTE)),
+('SAP_OUTBOUND_POSTING', 'WMS', 'SAP', 'SO-OUT-202606110002', 'POST', '/api/mock/sap/material-documents', JSON_OBJECT('shipmentNo', 'SHP-SO-OUT-202606110002-01'), JSON_OBJECT('sapMaterialDocNo', '4900009002'), 'SUCCESS', 0, NULL, DATE_SUB(NOW(), INTERVAL 1 HOUR));
 
 INSERT INTO wms_outbound_status_history (outbound_order_id, outbound_order_no, from_status, to_status, action, operator, message, created_at)
-SELECT id, order_no, NULL, status, 'SEED_STATUS', 'system', '演示数据初始化', created_at
+SELECT id, order_no, NULL, status, 'SEED_STATUS', 'system', '婕旂ず鏁版嵁鍒濆鍖?, created_at
 FROM wms_outbound_order;

@@ -19,6 +19,8 @@ const inventoryStatusOptions = ['QUALIFIED', 'PENDING', 'FROZEN', 'UNQUALIFIED']
 const columns = [
   { prop: 'warehouse_code', label: '仓库编码', width: 160 },
   { prop: 'warehouse_name', label: '仓库名称', width: 170 },
+  { prop: 'owner_code', label: '货主', width: 120 },
+  { prop: 'owner_name', label: '货主名称', width: 160 },
   { prop: 'area_code', label: '库区', width: 120 },
   { prop: 'location_code', label: '库位', width: 130 },
   { prop: 'product_code', label: '产品编码', width: 170 },
@@ -36,10 +38,10 @@ const columns = [
 
 const searchFields = [
   { prop: 'warehouseCode', label: '仓库编码' },
+  { prop: 'ownerCode', label: '货主' },
   { prop: 'locationCode', label: '库位编码' },
   { prop: 'productCode', label: '产品编码' },
   { prop: 'batchNo', label: '批次' },
   { prop: 'inventoryStatus', label: '库存状态', type: 'select', options: inventoryStatusOptions }
 ]
 </script>
-

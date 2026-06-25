@@ -504,15 +504,22 @@ function outboundLine(order: Row, lineNo: number, product: Row, plannedQty: numb
     order_id: order.id,
     order_no: order.order_no,
     line_no: lineNo,
+    product_id: product.id,
     product_code: product.product_code,
     product_name: product.product_name,
+    product_description: product.product_name,
+    unit: product.unit || 'PCS',
+    sn_required: Number(product.sn_managed || 0),
+    sap_plant: order.sap_plant || order.owner_code || '3060',
     planned_qty: plannedQty,
+    order_qty: plannedQty,
     allocated_qty: allocatedQty,
     picked_qty: pickedQty,
     review_qty: reviewQty,
     shipped_qty: shippedQty,
     batch_no: `BATCH-OUT-${order.order_no}-${lineNo}`,
-    status: order.status
+    status: order.status,
+    line_status: order.status
   }
 }
 
@@ -795,6 +802,15 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
         { id: 'inventoryList', title: '库存查询', path: '/inventory/list' },
         { id: 'snList', title: 'SN 查询', path: '/inventory/sn' }
       ] },
+      { id: 'reports', title: '报表中心', icon: 'DataAnalysis', children: [
+        { id: 'inoutStockReport', title: '进出存报表', path: '/reports/inout-stock' },
+        { id: 'inboundDailyReport', title: '入库日报表', path: '/reports/inbound-daily' },
+        { id: 'outboundDailyReport', title: '出库日报表', path: '/reports/outbound-daily' },
+        { id: 'standardAgingReport', title: '标准库龄报表', path: '/reports/standard-aging' },
+        { id: 'segmentAgingReport', title: '分段库龄报表', path: '/reports/segment-aging' },
+        { id: 'outboundSnReport', title: '出库 SN 报表', path: '/reports/outbound-sn' },
+        { id: 'inboundSnReport', title: '入库 SN 报表', path: '/reports/inbound-sn' }
+      ] },
       { id: 'interface', title: '接口中心', icon: 'Connection', children: [{ id: 'interfaceLogs', title: '接口日志', path: '/interface/logs' }] },
       { id: 'system', title: '系统设置', icon: 'Setting', children: [{ id: 'users', title: '系统用户', path: '/system/users' }] }
     ] as T
@@ -836,6 +852,15 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
       { id: 'inventory', title: '库存管理', icon: 'Box', children: [
         { id: 'inventoryList', title: '库存查询', path: '/inventory/list' },
         { id: 'snList', title: 'SN 查询', path: '/inventory/sn' }
+      ] },
+      { id: 'reports', title: '报表中心', icon: 'DataAnalysis', children: [
+        { id: 'inoutStockReport', title: '进出存报表', path: '/reports/inout-stock' },
+        { id: 'inboundDailyReport', title: '入库日报表', path: '/reports/inbound-daily' },
+        { id: 'outboundDailyReport', title: '出库日报表', path: '/reports/outbound-daily' },
+        { id: 'standardAgingReport', title: '标准库龄报表', path: '/reports/standard-aging' },
+        { id: 'segmentAgingReport', title: '分段库龄报表', path: '/reports/segment-aging' },
+        { id: 'outboundSnReport', title: '出库 SN 报表', path: '/reports/outbound-sn' },
+        { id: 'inboundSnReport', title: '入库 SN 报表', path: '/reports/inbound-sn' }
       ] },
       { id: 'interface', title: '接口中心', icon: 'Connection', children: [{ id: 'interfaceLogs', title: '接口日志', path: '/interface/logs' }] },
       { id: 'system', title: '系统设置', icon: 'Setting', children: [{ id: 'users', title: '系统用户', path: '/system/users' }] }
@@ -916,6 +941,9 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
     saveStore(store)
     return row as T
   }
+
+  const reportResult = handleReportMock<T>(store, url, method, (config.params || {}) as Row, (config.data || {}) as Row)
+  if (reportResult.handled) return reportResult.value
 
   const importExportResult = handleImportExportMock<T>(store, url, method, (config.params || {}) as Row, (config.data || {}) as Row)
   if (importExportResult.handled) return importExportResult.value
@@ -1098,6 +1126,11 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
       if (method === 'post' && lineAction === 'cancel-sn-collection') return runMockAction(store, id, 'CANCEL_SN_COLLECTION', (config.data || {}) as Row, () => mockCancelSnCollection(store, id, lineId, (config.data || {}) as Row)) as T
     }
     if (method === 'get' && !action) return productionDetail(store, id) as T
+    if (method === 'post' && action === 'cancel') return mockCancelInboundOrder(store, id, (config.data || {}) as Row) as T
+    if (method === 'post' && action === 'receipts' && segments[url.startsWith('/inbound-orders/') ? 5 : 6] === 'cancel') {
+      const receiptId = url.startsWith('/inbound-orders/') ? Number(segments[4]) : Number(segments[5])
+      return mockCancelInboundReceipt(store, id, receiptId, (config.data || {}) as Row) as T
+    }
     if (method === 'post' && action === 'receive') return runMockAction(store, id, 'RECEIVE_SN', (config.data || {}) as Row, () => mockReceive(store, id, (config.data || {}) as Row)) as T
     if (method === 'post' && action === 'bind-package') return runMockAction(store, id, 'BIND_PACKAGE', (config.data || {}) as Row, () => mockBind(store, id, (config.data || {}) as Row)) as T
     if (method === 'post' && ['sap-post', 'post-sap'].includes(action)) return mockSapPost(store, id, (config.data || {}) as Row) as T
@@ -1122,10 +1155,6 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
     ids.forEach((id) => deleteMockBinding(store, Number(id)))
     saveStore(store)
     return 'deleted' as T
-  }
-
-  if (url === '/outbound-orders' && method === 'get') {
-    return pageOutboundOrders(store, (config.params || {}) as Row) as T
   }
 
   const outboundResult = handleOutboundMock<T>(store, url, method, (config.params || {}) as Row, (config.data || {}) as Row)
@@ -1312,10 +1341,25 @@ function normalizeStore(store: any) {
     store.__wmsInboundReceiptVersion = 'inbound-receipt-v2'
   }
   ensureOutboundMockStore(store)
+  ensureShippingOrderV3Demo(store)
   ensureOutboundMockLines(store)
+  ensureMockOwnerOnStock(store)
   ensureMixedInboundDemo(store)
   ensureInboundShipFromCountries(store)
   return store
+}
+
+function ensureMockOwnerOnStock(store: any) {
+  ;(store.inventory || []).forEach((row: Row) => {
+    const product = (store.products || []).find((item: Row) => item.product_code === row.product_code || Number(item.id) === Number(row.product_id))
+    row.owner_code ||= product?.owner_code || '3060'
+    row.owner_name ||= product?.owner_name || '杭州利沃得'
+  })
+  ;(store.serialNumbers || []).forEach((row: Row) => {
+    const product = (store.products || []).find((item: Row) => item.product_code === row.product_code || Number(item.id) === Number(row.product_id))
+    row.owner_code ||= product?.owner_code || '3060'
+    row.owner_name ||= product?.owner_name || '杭州利沃得'
+  })
 }
 
 function restoreFullMockSeedIfReduced(store: any, fresh: any) {
@@ -1812,6 +1856,110 @@ function ensureOutboundMockStore(store: any) {
   store.__wmsOutboundMockVersion = 'outbound-flow-v2'
 }
 
+function ensureShippingOrderV3Demo(store: any) {
+  const demoVersion = 'shipping-order-v4-fixes2'
+  const demoOrderNos = ['SO-OUT-202606110001', 'TR-OUT-202606110001', 'STO-OUT-202606110001', 'SO-OUT-202606110002']
+  if (store.__wmsShippingOrderV3 !== demoVersion) {
+    resetShippingOrderDemo(store, demoOrderNos)
+  }
+  if (store.__wmsShippingOrderV3 === demoVersion) return
+  const central = store.warehouses.find((row: Row) => row.warehouse_code === 'WH-HZ-CENTRAL') || store.warehouses[0]
+  const gt3 = store.products.find((row: Row) => row.product_code === 'GT3-10KD1R11004') || store.products[0]
+  const nonSn = store.products.find((row: Row) => row.product_code === 'HXEDE081R10002') || store.products.find((row: Row) => !row.sn_managed) || store.products[1]
+  const demoOwnerCode = gt3.owner_code || nonSn.owner_code || '3060'
+  const demoOwnerName = gt3.owner_name || nonSn.owner_name || '杭州利沃得'
+  if (!store.inventory.some((row: Row) => row.product_code === gt3.product_code && row.batch_no === 'BATCH-SHIP-GT3-MOCK')) {
+    store.inventory.unshift({ id: Date.now() + 11, warehouse_code: central.warehouse_code, warehouse_name: central.warehouse_name, area_code: 'AREA-GOOD-01', location_code: 'A01-01-01', owner_code: demoOwnerCode, owner_name: demoOwnerName, product_code: gt3.product_code, product_name: gt3.product_name, batch_no: 'BATCH-SHIP-GT3-MOCK', inventory_status: 'QUALIFIED', total_qty: 40, available_qty: 35, allocated_qty: 0, frozen_qty: 0, safety_stock: 20, inbound_date: '2026-04-01' })
+  }
+  if (!store.inventory.some((row: Row) => row.product_code === nonSn.product_code && row.batch_no === 'BATCH-SHIP-NONSN-MOCK')) {
+    store.inventory.unshift({ id: Date.now() + 12, warehouse_code: central.warehouse_code, warehouse_name: central.warehouse_name, area_code: 'AREA-GOOD-01', location_code: 'A01-01-01', owner_code: demoOwnerCode, owner_name: demoOwnerName, product_code: nonSn.product_code, product_name: nonSn.product_name, batch_no: 'BATCH-SHIP-NONSN-MOCK', inventory_status: 'QUALIFIED', total_qty: 80, available_qty: 80, allocated_qty: 0, frozen_qty: 0, safety_stock: 20, inbound_date: '2026-04-03' })
+  }
+  Array.from({ length: 20 }, (_, index) => index + 1).forEach((n) => {
+    const sn = `SN-SHIP-GT3-${String(n).padStart(4, '0')}`
+    if (!store.serialNumbers.some((row: Row) => row.sn_code === sn)) {
+      store.serialNumbers.unshift(mockSn(sn, gt3, central, 'A01-01-01', 'ON_SHELF', 'QUALIFIED', 0, ''))
+    }
+  })
+  ensureAvailableShippingSerials(store, gt3, central, 14)
+  ;[
+    { shipmentOrderNo: 'SO-OUT-202606110001', orderType: 'SALES_OUTBOUND', relatedOrderNo: 'FUL-SO-202606110001', salesOrderNo: 'SO202606110001', consigneeCode: 'CUST-TESLA-001', lines: [{ lineNo: 10, productCode: gt3.product_code, orderQty: 3, snRequired: true }, { lineNo: 20, productCode: nonSn.product_code, orderQty: 5, snRequired: false }] },
+    { shipmentOrderNo: 'TR-OUT-202606110001', orderType: 'WAREHOUSE_TRANSFER', relatedOrderNo: 'TR202606110001', targetWarehouseCode: 'WH-SH-REGION', lines: [{ lineNo: 10, productCode: gt3.product_code, orderQty: 2, snRequired: true }, { lineNo: 20, productCode: nonSn.product_code, orderQty: 4, snRequired: false }] },
+    { shipmentOrderNo: 'STO-OUT-202606110001', orderType: 'STO_OUTBOUND', relatedOrderNo: 'STO202606110001', targetWarehouseCode: 'WH-SH-REGION', lines: [{ lineNo: 10, productCode: gt3.product_code, orderQty: 4, snRequired: true }] },
+    { shipmentOrderNo: 'SO-OUT-202606110002', orderType: 'SALES_OUTBOUND', relatedOrderNo: 'FUL-SO-202606110002', salesOrderNo: 'SO202606110002', consigneeCode: 'CUST-BYD-002', lines: [{ lineNo: 10, productCode: gt3.product_code, orderQty: 5, snRequired: true }] }
+  ].forEach((body) => {
+    if (!store.outboundOrders.some((row: Row) => row.order_no === body.shipmentOrderNo)) {
+      mockCreateShippingOrderV3(store, { warehouseCode: 'WH-HZ-CENTRAL', ownerCode: demoOwnerCode, ownerName: demoOwnerName, ...body })
+    }
+  })
+  const sto = store.outboundOrders.find((row: Row) => row.order_no === 'STO-OUT-202606110001')
+  if (sto && Number(sto.allocated_qty || 0) === 0) {
+    mockAutoAllocateV3(store, Number(sto.id))
+    const stoLine = (store.outboundOrderLines || []).find((line: Row) => Number(line.order_id) === Number(sto.id))
+    const stoSerials = (store.inventoryAllocations || [])
+      .filter((row: Row) => Number(row.outbound_order_id) === Number(sto.id) && (!stoLine || Number(row.outbound_detail_id || row.line_id || stoLine.id) === Number(stoLine.id)) && row.allocation_status === 'ALLOCATED' && row.sn_code)
+      .slice(0, 2)
+      .map((row: Row) => row.sn_code)
+    if (stoSerials.length) mockOrderPick(store, Number(sto.id), { lineId: stoLine?.id, serialNumbers: stoSerials, operator: 'wh_admin' })
+  }
+  const partial = store.outboundOrders.find((row: Row) => row.order_no === 'SO-OUT-202606110002')
+  if (partial && Number(partial.shipped_qty || 0) === 0) {
+    mockAutoAllocateV3(store, Number(partial.id))
+    const line = (store.outboundOrderLines || []).find((item: Row) => Number(item.order_id) === Number(partial.id))
+    const partialSerials = (store.inventoryAllocations || [])
+      .filter((row: Row) => Number(row.outbound_order_id) === Number(partial.id) && (!line || Number(row.outbound_detail_id || row.line_id || line.id) === Number(line.id)) && row.allocation_status === 'ALLOCATED' && row.sn_code)
+      .slice(0, 5)
+      .map((row: Row) => row.sn_code)
+    if (partialSerials.length) {
+      mockOrderPick(store, Number(partial.id), { lineId: line?.id, serialNumbers: partialSerials, operator: 'wh_admin' })
+      mockShipV3(store, Number(partial.id), { lineId: line?.id, shipQty: Math.min(2, partialSerials.length), carrierName: 'SF', trackingNo: 'SF202606110002', operator: 'logistics' })
+    }
+  }
+  store.__wmsShippingOrderV3 = demoVersion
+  saveStore(store)
+}
+
+function ensureAvailableShippingSerials(store: any, product: Row, warehouse: Row, count: number) {
+  const available = () => (store.serialNumbers || []).filter((row: Row) =>
+    row.warehouse_code === warehouse.warehouse_code &&
+    row.product_code === product.product_code &&
+    row.status === 'ON_SHELF' &&
+    row.quality_status === 'QUALIFIED' &&
+    !row.locked_flag
+  )
+  let index = 1
+  while (available().length < count) {
+    const sn = `SN-SHIP-GT3-DEMO-${String(index).padStart(4, '0')}`
+    if (!store.serialNumbers.some((row: Row) => row.sn_code === sn)) {
+      store.serialNumbers.unshift(mockSn(sn, product, warehouse, 'A01-01-01', 'ON_SHELF', 'QUALIFIED', 0, ''))
+    }
+    index += 1
+    if (index > 200) break
+  }
+}
+
+function resetShippingOrderDemo(store: any, orderNos: string[]) {
+  const orderNoSet = new Set(orderNos)
+  const demoOrders = (store.outboundOrders || []).filter((row: Row) => orderNoSet.has(row.order_no) || orderNoSet.has(row.parent_order_no))
+  const demoIds = new Set(demoOrders.map((row: Row) => Number(row.id)))
+  const demoDocNos = new Set(demoOrders.map((row: Row) => row.order_no))
+  store.outboundOrders = (store.outboundOrders || []).filter((row: Row) => !demoIds.has(Number(row.id)))
+  store.outboundOrderLines = (store.outboundOrderLines || []).filter((row: Row) => !demoIds.has(Number(row.order_id)))
+  store.inventoryAllocations = (store.inventoryAllocations || []).filter((row: Row) => !demoIds.has(Number(row.outbound_order_id)))
+  store.pickingTasks = (store.pickingTasks || []).filter((row: Row) => !demoIds.has(Number(row.outbound_order_id)))
+  store.pickingRecords = (store.pickingRecords || []).filter((row: Row) => !demoIds.has(Number(row.outbound_order_id)))
+  store.shipmentRecords = (store.shipmentRecords || []).filter((row: Row) => !demoIds.has(Number(row.outbound_order_id)))
+  store.outboundExceptions = (store.outboundExceptions || []).filter((row: Row) => !demoDocNos.has(row.outbound_order_no))
+  store.interfaceLogs = (store.interfaceLogs || []).filter((row: Row) => !demoDocNos.has(row.business_doc_no))
+  store.operationLogs = (store.operationLogs || []).filter((row: Row) => !demoDocNos.has(row.business_doc_no))
+  ;(store.serialNumbers || []).filter((row: Row) => String(row.sn_code || '').startsWith('SN-SHIP-GT3-')).forEach((row: Row) => {
+    Object.assign(row, { status: 'ON_SHELF', quality_status: 'QUALIFIED', locked_flag: 0, locked_order_no: '', outbound_order_no: '', sold_flag: 0, market_flag: 0 })
+  })
+  ;(store.inventory || []).filter((row: Row) => ['BATCH-SHIP-GT3-MOCK', 'BATCH-SHIP-NONSN-MOCK'].includes(row.batch_no)).forEach((row: Row) => {
+    if (row.batch_no === 'BATCH-SHIP-GT3-MOCK') Object.assign(row, { total_qty: 40, available_qty: 35, allocated_qty: 0, frozen_qty: 0, inventory_status: 'QUALIFIED' })
+    if (row.batch_no === 'BATCH-SHIP-NONSN-MOCK') Object.assign(row, { total_qty: 80, available_qty: 80, allocated_qty: 0, frozen_qty: 0, inventory_status: 'QUALIFIED' })
+  })
+}
+
 function mockSn(sn: string, product: Row, warehouse: Row, locationCode: string, status: string, qualityStatus: string, lockedFlag: number, orderNo: string, soldFlag = 0) {
   return {
     id: Date.now() + Math.random(),
@@ -1864,6 +2012,35 @@ function shipmentRow(shipmentNo: string, order: Row, qty: number, carrier: strin
 }
 
 function handleOutboundMock<T>(store: any, url: string, method: string, params: Row, body: Row): { handled: true; value: T } | { handled: false; value?: never } {
+  if (url === '/outbound-orders' && method === 'get') return handled(pageOutboundOrders(store, params) as T)
+  if (url === '/outbound-orders' && method === 'post') return handled(mockCreateShippingOrderV3(store, body) as T)
+  if (url.startsWith('/outbound-orders/')) {
+    const segments = url.split('/')
+    const id = Number(segments[2])
+    const action = segments[3]
+    if (method === 'get' && !action) return handled(mockOutboundDetail(store, id) as T)
+    if (method === 'get' && action === 'allocations') return handled(mockAllocationView(store, id) as T)
+    if (method === 'get' && action === 'allocation-candidates') return handled({ items: mockAllocationView(store, id).availableInventory, recommended: mockAllocationView(store, id).recommendedInventory } as T)
+    if (method === 'get' && action === 'interface-logs') return handled({ items: store.interfaceLogs.filter((row: Row) => row.business_doc_no === mockOutboundOrder(store, id).order_no) } as T)
+    if (method === 'get' && action === 'status-flow') return handled({ order: mockOutboundOrder(store, id), items: [] } as T)
+    if (method === 'get' && action === 'picking-list') return handled(mockPickingList(store, id) as T)
+    if (method === 'get' && action === 'shipments') return handled(mockOutboundDetail(store, id) as T)
+    if (method === 'get' && action === 'pick-records') return handled(mockOutboundDetail(store, id) as T)
+    if (method === 'post' && action === 'allocations' && segments[4] === 'cancel') return handled(mockCancelAllocationsV3(store, id, body) as T)
+    if (method === 'post' && action === 'picks' && segments[4] === 'cancel') return handled(mockCancelPicksV3(store, id, body) as T)
+    if (method === 'post' && action === 'shipments' && segments[4] === 'cancel') return handled(mockCancelShipmentsV3(store, id, body) as T)
+    if (method === 'post' && action === 'shipments' && segments[5] === 'cancel') return handled(mockCancelShipmentV3(store, id, Number(segments[4]), body) as T)
+    if (method === 'post' && action === 'picks' && segments[5] === 'cancel') return handled(mockCancelPickV3(store, id, Number(segments[4]), body) as T)
+    if (method === 'post' && action === 'allocate-auto') return handled(mockAutoAllocateV3(store, id) as T)
+    if (method === 'post' && action === 'allocate-manual') return handled(mockManualAllocateV3(store, id, body) as T)
+    if (method === 'post' && action === 'release-allocation') return handled(mockCancelAllocation(store, id) as T)
+    if (method === 'post' && action === 'picking-tasks') return handled(mockGeneratePicking(store, id) as T)
+    if (method === 'post' && ['pick', 'pick-scan'].includes(action)) return handled(mockOrderPick(store, id, body) as T)
+    if (method === 'post' && action === 'ship') return handled(mockShipV3(store, id, body) as T)
+    if (method === 'post' && action === 'post-sap') return handled(mockSapCallback(store, id, Boolean(body.forceSapFail)) as T)
+    if (method === 'post' && action === 'cancel') return handled(mockCancelOrder(store, id, body) as T)
+    if (method === 'post' && action === 'close') return handled(mockCloseOrder(store, id, body) as T)
+  }
   if (url === '/outbound/shipping-orders' && method === 'get') return handled(pageOutboundOrders(store, params) as T)
   if (url === '/outbound/sales-orders' && method === 'get') return handled(pageRows(store.outboundOrders.filter((row: Row) => row.outbound_type === 'SALES'), params) as T)
   if (url === '/outbound/transfer-orders' && method === 'get') return handled(pageRows(store.outboundOrders.filter((row: Row) => row.outbound_type === 'TRANSFER'), params) as T)
@@ -1917,6 +2094,405 @@ function handleImportExportMock<T>(store: any, url: string, method: string, para
 
   if (url === '/inbound/sn-bindings/export' && method === 'get') return handled(csvFile(`SN绑定数据_${mockTimestamp()}.csv`, snBindingExportCsv(store, params)) as T)
   return { handled: false }
+}
+
+const REPORT_NAMES: Row = {
+  'inout-stock': '进出存报表',
+  'inbound-daily': '入库日报表',
+  'outbound-daily': '出库日报表',
+  'standard-aging': '标准库龄报表',
+  'segment-aging': '分段库龄报表',
+  'outbound-sn': '出库SN报表',
+  'inbound-sn': '入库SN报表'
+}
+
+const REPORT_EXPORT_COLUMNS: Record<string, [string, string][]> = {
+  'inout-stock': [
+    ['统计日期', 'reportDate'], ['货主', 'ownerCode'], ['货主名称', 'ownerName'], ['仓库编码', 'warehouseCode'], ['仓库名称', 'warehouseName'],
+    ['库区', 'areaName'], ['库位', 'locationCode'], ['SAP工厂', 'sapPlant'], ['SAP库存地点', 'sapStorageLocation'], ['产品编码', 'productCode'],
+    ['产品名称', 'productName'], ['产品名称英文', 'productNameEn'], ['产品族', 'productFamily'], ['产品类', 'productClass'], ['产品类别', 'productCategory'],
+    ['单位', 'unit'], ['期初库存', 'openingQty'], ['本期入库数量', 'inboundQty'], ['本期出库数量', 'outboundQty'], ['调整入库数量', 'adjustInQty'],
+    ['调整出库数量', 'adjustOutQty'], ['冻结数量', 'frozenQty'], ['已分配数量', 'allocatedQty'], ['期末库存', 'closingQty'], ['可用库存', 'availableQty'],
+    ['库存状态', 'stockStatus'], ['最后入库时间', 'lastInboundTime'], ['最后出库时间', 'lastOutboundTime']
+  ],
+  'inbound-daily': [
+    ['入库日期', 'receiptDate'], ['收货批次号', 'receiptNo'], ['入库单号', 'inboundOrderNo'], ['入库类型', 'inboundType'], ['来源系统', 'sourceSystem'],
+    ['来源单号', 'sourceDocNo'], ['货主', 'ownerCode'], ['货主名称', 'ownerName'], ['仓库编码', 'warehouseCode'], ['仓库名称', 'warehouseName'],
+    ['SAP工厂', 'sapPlant'], ['SAP库存地点', 'sapStorageLocation'], ['行号', 'lineNo'], ['产品编码', 'productCode'], ['产品名称', 'productName'],
+    ['产品描述', 'productDescription'], ['单位', 'unit'], ['计划数量', 'planQty'], ['本次收货数量', 'receiptQty'], ['累计收货数量', 'receivedQty'],
+    ['已上架数量', 'shelvedQty'], ['SN管理', 'snRequired'], ['收货状态', 'receiptStatus'], ['SAP回传状态', 'sapPostStatus'], ['SAP凭证号', 'sapMaterialDocNo'],
+    ['SAP回传说明', 'sapPostResult'], ['收货人', 'receiptUser'], ['收货时间', 'receiptTime'], ['创建时间', 'createdAt']
+  ],
+  'outbound-daily': [
+    ['发货日期', 'shipmentDate'], ['发货批次号', 'shipmentNo'], ['发运订单号', 'outboundOrderNo'], ['订单类型', 'outboundType'], ['发运订单状态', 'orderStatus'],
+    ['关联单号', 'relatedOrderNo'], ['销售单号', 'salesOrderNo'], ['返工单号', 'reworkOrderNo'], ['货主', 'ownerCode'], ['货主名称', 'ownerName'],
+    ['仓库编码', 'warehouseCode'], ['仓库名称', 'warehouseName'], ['收货人编码', 'consigneeCode'], ['收货人名称', 'consigneeName'], ['目标仓库', 'targetWarehouseName'],
+    ['目标货主', 'targetOwnerName'], ['SAP工厂', 'sapPlant'], ['行号', 'lineNo'], ['产品编码', 'productCode'], ['产品描述', 'productDescription'],
+    ['单位', 'unit'], ['订单数量', 'orderQty'], ['分配数量', 'allocatedQty'], ['拣货数量', 'pickedQty'], ['本次发货数量', 'shipmentQty'],
+    ['累计发货数量', 'shippedQty'], ['物流商', 'carrierName'], ['物流单号', 'trackingNo'], ['SAP回传状态', 'sapPostStatus'], ['SAP凭证号', 'sapMaterialDocNo'],
+    ['SAP回传说明', 'sapPostResult'], ['发货人', 'shipmentUser'], ['发货时间', 'shipmentTime'], ['创建时间', 'createdAt']
+  ],
+  'standard-aging': [
+    ['截止日期', 'asOfDate'], ['货主', 'ownerCode'], ['货主名称', 'ownerName'], ['仓库编码', 'warehouseCode'], ['仓库名称', 'warehouseName'],
+    ['库区', 'areaName'], ['库位', 'locationCode'], ['产品编码', 'productCode'], ['产品名称', 'productName'], ['产品名称英文', 'productNameEn'],
+    ['产品族', 'productFamily'], ['产品类', 'productClass'], ['产品类别', 'productCategory'], ['单位', 'unit'], ['批次号', 'batchNo'],
+    ['SN', 'snCode'], ['托盘码', 'palletCode'], ['箱码', 'boxCode'], ['入库单号', 'inboundOrderNo'], ['入库日期', 'inboundDate'],
+    ['最近收货日期', 'lastReceiptDate'], ['最近上架日期', 'lastShelvedDate'], ['库龄天数', 'agingDays'], ['标准库龄阈值', 'agingThresholdDays'],
+    ['是否超期', 'overdueFlag'], ['是否电池类', 'batteryFlag'], ['库存数量', 'stockQty'], ['可用数量', 'availableQty'], ['冻结数量', 'frozenQty'],
+    ['库存状态', 'stockStatus'], ['处理建议', 'handlingSuggestion']
+  ],
+  'segment-aging': [
+    ['货主', 'ownerCode'], ['货主名称', 'ownerName'], ['仓库编码', 'warehouseCode'], ['仓库名称', 'warehouseName'], ['产品编码', 'productCode'],
+    ['产品名称', 'productName'], ['产品族', 'productFamily'], ['产品类', 'productClass'], ['单位', 'unit'], ['总库存数量', 'totalStockQty'],
+    ['0-30天数量', 'qty_0_30'], ['31-60天数量', 'qty_31_60'], ['61-90天数量', 'qty_61_90'], ['91-180天数量', 'qty_91_180'],
+    ['181-270天数量', 'qty_181_270'], ['271-360天数量', 'qty_271_360'], ['360天以上数量', 'qty_over_360'], ['360天以上占比', 'ratioOver360'],
+    ['是否电池类', 'batteryFlag'], ['处理建议', 'handlingSuggestion']
+  ],
+  'outbound-sn': [
+    ['SN', 'snCode'], ['产品编码', 'productCode'], ['产品描述', 'productDescription'], ['产品名称英文', 'productNameEn'], ['货主', 'ownerCode'],
+    ['货主名称', 'ownerName'], ['仓库编码', 'warehouseCode'], ['仓库名称', 'warehouseName'], ['库位', 'locationCode'], ['托盘码', 'palletCode'],
+    ['箱码', 'boxCode'], ['发运订单号', 'outboundOrderNo'], ['订单类型', 'outboundType'], ['行号', 'lineNo'], ['销售单号', 'salesOrderNo'],
+    ['关联单号', 'relatedOrderNo'], ['收货人编码', 'consigneeCode'], ['收货人名称', 'consigneeName'], ['发货批次号', 'shipmentNo'], ['发货时间', 'shipmentTime'],
+    ['物流商', 'carrierName'], ['物流单号', 'trackingNo'], ['SAP回传状态', 'sapPostStatus'], ['SAP凭证号', 'sapMaterialDocNo'], ['SAP回传说明', 'sapPostResult'],
+    ['SN状态', 'snStatus'], ['追溯回传状态', 'tracePostStatus'], ['追溯回传时间', 'tracePostTime']
+  ],
+  'inbound-sn': [
+    ['SN', 'snCode'], ['产品编码', 'productCode'], ['产品名称', 'productName'], ['产品名称英文', 'productNameEn'], ['货主', 'ownerCode'],
+    ['货主名称', 'ownerName'], ['仓库编码', 'warehouseCode'], ['仓库名称', 'warehouseName'], ['库区', 'areaName'], ['库位', 'locationCode'],
+    ['托盘码', 'palletCode'], ['箱码', 'boxCode'], ['入库单号', 'inboundOrderNo'], ['入库类型', 'inboundType'], ['来源系统', 'sourceSystem'],
+    ['来源单号', 'sourceDocNo'], ['行号', 'lineNo'], ['MES工单号', 'mesWorkOrderNo'], ['SAP工单号', 'sapWorkOrderNo'], ['SN下发时间', 'issuedTime'],
+    ['SN采集时间', 'collectedTime'], ['收货批次号', 'receiptNo'], ['收货时间', 'receiptTime'], ['上架时间', 'shelvedTime'], ['SAP回传状态', 'sapPostStatus'],
+    ['SAP凭证号', 'sapMaterialDocNo'], ['SAP回传说明', 'sapPostResult'], ['SN状态', 'snStatus'], ['质量状态', 'qualityStatus']
+  ]
+}
+
+function handleReportMock<T>(store: any, url: string, method: string, params: Row, body: Row): { handled: true; value: T } | { handled: false; value?: never } {
+  const match = url.match(/^\/reports\/([^/]+)(?:\/export)?$/)
+  if (!match) return { handled: false }
+  const reportKey = match[1]
+  if (!REPORT_NAMES[reportKey]) return { handled: false }
+
+  const exportMode = url.endsWith('/export')
+  const query = exportMode ? body : params
+  const rows = filterReportRows(buildReportRows(store, reportKey, query), query)
+  if (exportMode && method === 'post') {
+    return handled(csvFile(`${REPORT_NAMES[reportKey]}_${mockTimestamp()}.csv`, reportExportCsv(reportKey, rows)) as T)
+  }
+  if (method !== 'get') return { handled: false }
+  const pageNum = Number(params.pageNum || 1)
+  const pageSize = Number(params.pageSize || 10)
+  const start = (pageNum - 1) * pageSize
+  return handled({ items: rows.slice(start, start + pageSize), total: rows.length, pageNum, pageSize } as T)
+}
+
+function buildReportRows(store: any, reportKey: string, params: Row) {
+  const builders: Record<string, (store: any, params: Row) => Row[]> = {
+    'inout-stock': buildInoutStockReportRows,
+    'inbound-daily': buildInboundDailyReportRows,
+    'outbound-daily': buildOutboundDailyReportRows,
+    'standard-aging': buildStandardAgingReportRows,
+    'segment-aging': buildSegmentAgingReportRows,
+    'outbound-sn': buildOutboundSnReportRows,
+    'inbound-sn': buildInboundSnReportRows
+  }
+  return builders[reportKey]?.(store, params) || []
+}
+
+function buildInoutStockReportRows(store: any, params: Row) {
+  const reportDate = String(params.endDate || params.startDate || '2026-06-25')
+  return (store.inventory || []).map((item: Row, index: number) => {
+    const product = findProduct(store, item)
+    const outboundQty = reportQtyByProduct(store.outboundOrderLines, item.product_code, 'shipped_qty') || (index % 4)
+    const inboundQty = reportQtyByProduct(store.inboundOrderLines, item.product_code, 'received_qty') || (index % 5)
+    const closingQty = Number(item.total_qty || 0)
+    const openingQty = Math.max(closingQty - inboundQty + outboundQty, 0)
+    return productReportBase(store, item, product, {
+      reportDate,
+      areaName: item.area_name || item.area_code,
+      locationCode: item.location_code,
+      sapPlant: item.sap_plant || item.owner_code || product.owner_code || '3060',
+      sapStorageLocation: item.sap_storage_location || '1001',
+      openingQty,
+      inboundQty,
+      outboundQty,
+      adjustInQty: index % 9 === 0 ? 1 : 0,
+      adjustOutQty: index % 13 === 0 ? 1 : 0,
+      frozenQty: Number(item.frozen_qty || 0),
+      allocatedQty: Number(item.allocated_qty || 0),
+      closingQty,
+      availableQty: Number(item.available_qty || 0),
+      stockStatus: item.inventory_status || 'QUALIFIED',
+      lastInboundTime: `${item.inbound_date || '2026-06-11'} 09:00:00`,
+      lastOutboundTime: outboundQty > 0 ? '2026-06-20 15:30:00' : ''
+    })
+  })
+}
+
+function buildInboundDailyReportRows(store: any) {
+  return inboundLineRows(store).map((line: Row, index: number) => {
+    const product = findProduct(store, line)
+    const receiptLine = (store.inboundReceiptLines || []).find((row: Row) => Number(row.inbound_order_line_id) === Number(line.detail_id || line.id))
+    const receipt = receiptLine
+      ? (store.inboundReceipts || []).find((row: Row) => Number(row.id) === Number(receiptLine.receipt_id))
+      : (store.inboundReceipts || []).find((row: Row) => row.inbound_order_no === line.order_no)
+    const receiptQty = Number(receiptLine?.receive_qty ?? line.line_received_qty ?? line.received_qty ?? 0)
+    return productReportBase(store, line, product, {
+      receiptDate: String(receipt?.receipt_time || line.created_at || '2026-06-11').slice(0, 10),
+      receiptNo: receipt?.receipt_no || (receiptQty > 0 ? `RCV-${line.order_no}-${line.line_no}` : ''),
+      inboundOrderNo: line.order_no,
+      inboundType: line.inbound_type,
+      sourceSystem: line.source_system || 'SAP',
+      sourceDocNo: line.source_order_no || line.mes_work_order_no,
+      warehouseCode: line.warehouse_code,
+      warehouseName: line.warehouse_name,
+      sapPlant: line.sap_plant || line.owner_code || product.owner_code || '3060',
+      sapStorageLocation: line.sap_storage_location || '1001',
+      lineNo: line.line_no,
+      productDescription: line.product_name,
+      planQty: Number(line.line_planned_qty || line.planned_qty || 0),
+      receiptQty,
+      receivedQty: Number(line.line_received_qty || line.received_qty || 0),
+      shelvedQty: Number(line.line_shelved_qty || line.shelved_qty || 0),
+      snRequired: Number(line.sn_required || product.sn_managed || 0),
+      receiptStatus: receipt?.status || line.status || 'CREATED',
+      sapPostStatus: receiptLine?.sap_post_status || receipt?.sap_post_status || line.sap_post_status || 'NOT_POSTED',
+      sapMaterialDocNo: receiptLine?.sap_material_doc_no || receipt?.sap_material_doc_no || line.sap_material_doc_no || '',
+      sapPostResult: receiptLine?.sap_post_result || receipt?.sap_post_result || line.sap_post_result || '',
+      receiptUser: receipt?.receipt_user || (receiptQty > 0 ? 'wh_admin' : ''),
+      receiptTime: receipt?.receipt_time || '',
+      createdAt: line.created_at || `2026-06-${String(11 - (index % 8)).padStart(2, '0')} 09:00:00`
+    })
+  })
+}
+
+function buildOutboundDailyReportRows(store: any) {
+  return outboundLineRows(store).map((line: Row, index: number) => {
+    const product = findProduct(store, line)
+    const order = (store.outboundOrders || []).find((row: Row) => Number(row.id) === Number(line.order_id)) || line
+    const shipment = (store.shipmentRecords || []).find((row: Row) => Number(row.outbound_order_id) === Number(line.order_id) || row.outbound_order_no === line.order_no)
+    const shipmentQty = Number(line.line_shipped_qty || line.shipped_qty || 0)
+    return productReportBase(store, line, product, {
+      shipmentDate: String(shipment?.ship_time || order.ship_time || line.created_at || '2026-06-11').slice(0, 10),
+      shipmentNo: shipment?.shipment_no || (shipmentQty > 0 ? `SHIP-${line.order_no}-${line.line_no}` : ''),
+      outboundOrderNo: line.order_no,
+      outboundType: line.outbound_type,
+      orderStatus: order.status || line.status,
+      relatedOrderNo: order.related_order_no || order.source_order_no,
+      salesOrderNo: order.sales_order_no || order.source_order_no,
+      reworkOrderNo: order.rework_order_no || '',
+      warehouseCode: line.warehouse_code,
+      warehouseName: line.warehouse_name,
+      consigneeCode: order.consignee_code || order.customer_code,
+      consigneeName: order.consignee_name || order.customer_name,
+      targetWarehouseName: order.target_warehouse_name || '',
+      targetOwnerName: order.target_owner_name || '',
+      sapPlant: line.sap_plant || line.owner_code || product.owner_code || '3060',
+      lineNo: line.line_no,
+      productDescription: line.product_name,
+      orderQty: Number(line.line_planned_qty || line.planned_qty || 0),
+      allocatedQty: Number(line.line_allocated_qty || line.allocated_qty || 0),
+      pickedQty: Number(line.line_picked_qty || line.picked_qty || 0),
+      shipmentQty,
+      shippedQty: Number(line.line_shipped_qty || line.shipped_qty || 0),
+      carrierName: shipment?.carrier || order.carrier_name || order.logistics_company || '',
+      trackingNo: shipment?.tracking_no || order.tracking_no || '',
+      sapPostStatus: shipment?.sap_post_status || order.sap_post_status || 'NOT_POSTED',
+      sapMaterialDocNo: shipment?.sap_material_doc_no || order.sap_material_doc_no || '',
+      sapPostResult: shipment?.sap_post_result || order.sap_post_result || '',
+      shipmentUser: shipment?.shipper || order.shipper || '',
+      shipmentTime: shipment?.ship_time || order.ship_time || '',
+      createdAt: line.created_at || `2026-06-${String(11 - (index % 8)).padStart(2, '0')} 10:00:00`
+    })
+  })
+}
+
+function buildStandardAgingReportRows(store: any, params: Row) {
+  const asOfDate = String(params.asOfDate || '2026-06-25')
+  return (store.inventory || []).map((item: Row, index: number) => {
+    const product = findProduct(store, item)
+    const sn = (store.serialNumbers || []).find((row: Row) => row.product_code === item.product_code && row.warehouse_code === item.warehouse_code)
+    const agingDays = daysBetween(item.inbound_date, asOfDate) || (60 + index * 7)
+    const threshold = Number(product.aging_threshold_days || item.aging_threshold_days || 180)
+    const overdue = agingDays > threshold
+    const serious = agingDays > 360
+    return productReportBase(store, item, product, {
+      asOfDate,
+      areaName: item.area_name || item.area_code,
+      locationCode: item.location_code,
+      productCategory: product.category,
+      batchNo: item.batch_no,
+      snCode: sn?.sn_code || '',
+      palletCode: sn?.pallet_code || '',
+      boxCode: sn?.box_code || '',
+      inboundOrderNo: sn?.inbound_order_no || '',
+      inboundDate: item.inbound_date,
+      lastReceiptDate: sn?.status ? '2026-06-11' : '',
+      lastShelvedDate: ['ON_SHELF', 'ALLOCATED', 'PICKED', 'SHIPPED', 'TRACED'].includes(String(sn?.status || '')) ? '2026-06-12' : '',
+      agingDays,
+      agingThresholdDays: threshold,
+      overdueFlag: overdue ? 1 : 0,
+      batteryFlag: Number(product.battery_flag || 0),
+      stockQty: Number(item.total_qty || 0),
+      availableQty: Number(item.available_qty || 0),
+      frozenQty: Number(item.frozen_qty || 0),
+      stockStatus: item.inventory_status || 'QUALIFIED',
+      handlingSuggestion: serious ? '管理层重点关注' : overdue && Number(product.battery_flag || 0) ? '优先复检 / 补电 / 调拨' : overdue ? '优先销售 / 调拨' : '正常'
+    })
+  })
+}
+
+function buildSegmentAgingReportRows(store: any, params: Row) {
+  const asOfDate = String(params.asOfDate || '2026-06-25')
+  return (store.inventory || []).map((item: Row, index: number) => {
+    const product = findProduct(store, item)
+    const qty = Number(item.total_qty || 0)
+    const agingDays = daysBetween(item.inbound_date, asOfDate) || (30 + index * 11)
+    const row = productReportBase(store, item, product, {
+      totalStockQty: qty,
+      qty_0_30: agingDays <= 30 ? qty : 0,
+      qty_31_60: agingDays > 30 && agingDays <= 60 ? qty : 0,
+      qty_61_90: agingDays > 60 && agingDays <= 90 ? qty : 0,
+      qty_91_180: agingDays > 90 && agingDays <= 180 ? qty : 0,
+      qty_181_270: agingDays > 180 && agingDays <= 270 ? qty : 0,
+      qty_271_360: agingDays > 270 && agingDays <= 360 ? qty : 0,
+      qty_over_360: agingDays > 360 ? qty : 0,
+      batteryFlag: Number(product.battery_flag || 0),
+      handlingSuggestion: agingDays > 360 ? '管理层重点关注' : agingDays > Number(product.aging_threshold_days || 180) ? '优先消化' : '正常'
+    })
+    row.ratioOver360 = `${Math.round((Number(row.qty_over_360 || 0) / Math.max(qty, 1)) * 100)}%`
+    return row
+  })
+}
+
+function buildOutboundSnReportRows(store: any) {
+  const candidates = (store.serialNumbers || []).filter((sn: Row) => sn.outbound_order_no || ['PICKED', 'SHIPPED', 'TRACED'].includes(String(sn.status || '')))
+  return candidates.map((sn: Row, index: number) => {
+    const order = (store.outboundOrders || []).find((row: Row) => row.order_no === sn.outbound_order_no) || (store.outboundOrders || [])[index % Math.max((store.outboundOrders || []).length, 1)] || {}
+    const line = (store.outboundOrderLines || []).find((row: Row) => row.order_no === order.order_no && row.product_code === sn.product_code) || (store.outboundOrderLines || [])[index % Math.max((store.outboundOrderLines || []).length, 1)] || {}
+    const shipment = (store.shipmentRecords || []).find((row: Row) => row.outbound_order_no === order.order_no || Number(row.outbound_order_id) === Number(order.id)) || {}
+    const product = findProduct(store, sn)
+    return productReportBase(store, { ...sn, ...order, warehouse_code: sn.warehouse_code || order.warehouse_code, warehouse_name: sn.warehouse_name || order.warehouse_name }, product, {
+      snCode: sn.sn_code,
+      productDescription: sn.product_name || product.product_name,
+      locationCode: sn.location_code,
+      palletCode: sn.pallet_code,
+      boxCode: sn.box_code,
+      outboundOrderNo: order.order_no || sn.outbound_order_no || `OUT-DEMO-${index + 1}`,
+      outboundType: order.outbound_type || 'SALES',
+      lineNo: line.line_no || 1,
+      salesOrderNo: order.sales_order_no || order.source_order_no || '',
+      relatedOrderNo: order.related_order_no || order.source_order_no || '',
+      consigneeCode: order.consignee_code || order.customer_code || '',
+      consigneeName: order.consignee_name || order.customer_name || '',
+      shipmentNo: shipment.shipment_no || (sn.status === 'SHIPPED' || sn.status === 'TRACED' ? `SHIP-${order.order_no || index}` : ''),
+      shipmentTime: shipment.ship_time || (sn.status === 'SHIPPED' || sn.status === 'TRACED' ? '2026-06-20 15:30:00' : ''),
+      carrierName: shipment.carrier || order.carrier_name || order.logistics_company || '顺丰速运',
+      trackingNo: shipment.tracking_no || order.tracking_no || '',
+      sapPostStatus: shipment.sap_post_status || order.sap_post_status || (index % 9 === 0 ? 'FAILED' : 'POSTED'),
+      sapMaterialDocNo: shipment.sap_material_doc_no || order.sap_material_doc_no || (index % 9 === 0 ? '' : `490000${String(index + 1).padStart(4, '0')}`),
+      sapPostResult: shipment.sap_post_result || order.sap_post_result || '',
+      snStatus: sn.status,
+      tracePostStatus: order.trace_post_status || (index % 8 === 0 ? 'FAILED' : 'SUCCESS'),
+      tracePostTime: index % 8 === 0 ? '' : '2026-06-20 15:40:00'
+    })
+  })
+}
+
+function buildInboundSnReportRows(store: any) {
+  return (store.serialNumbers || [])
+    .filter((sn: Row) => sn.inbound_order_no || ['INBOUND', 'COLLECTED', 'RECEIVED', 'ON_SHELF'].includes(String(sn.status || '')))
+    .map((sn: Row, index: number) => {
+      const order = (store.inboundOrders || []).find((row: Row) => row.order_no === sn.inbound_order_no) || {}
+      const line = (store.inboundOrderLines || []).find((row: Row) => Number(row.id) === Number(sn.inbound_order_line_id)) || {}
+      const receiptSn = (store.inboundReceiptSns || []).find((row: Row) => row.sn_code === sn.sn_code)
+      const receipt = receiptSn ? (store.inboundReceipts || []).find((row: Row) => Number(row.id) === Number(receiptSn.receipt_id)) : {}
+      const product = findProduct(store, sn)
+      return productReportBase(store, { ...sn, ...order, warehouse_code: sn.warehouse_code || order.warehouse_code, warehouse_name: sn.warehouse_name || order.warehouse_name }, product, {
+        snCode: sn.sn_code,
+        areaName: sn.area_name || '',
+        locationCode: sn.location_code,
+        palletCode: sn.pallet_code,
+        boxCode: sn.box_code,
+        inboundOrderNo: order.order_no || sn.inbound_order_no || '',
+        inboundType: order.inbound_type || '',
+        sourceSystem: order.source_system || 'MES',
+        sourceDocNo: order.source_order_no || '',
+        lineNo: line.line_no || sn.inbound_order_line_id || '',
+        mesWorkOrderNo: sn.mes_work_order_no || order.mes_work_order_no || '',
+        sapWorkOrderNo: order.source_order_no || '',
+        issuedTime: sn.created_at || `2026-06-11 08:${String(index % 60).padStart(2, '0')}:00`,
+        collectedTime: sn.pallet_code ? '2026-06-11 09:30:00' : '',
+        receiptNo: receipt?.receipt_no || (['RECEIVED', 'INBOUND', 'ON_SHELF'].includes(String(sn.status || '')) ? `RCV-${order.order_no || index}` : ''),
+        receiptTime: receipt?.receipt_time || (['RECEIVED', 'INBOUND', 'ON_SHELF'].includes(String(sn.status || '')) ? '2026-06-11 10:35:00' : ''),
+        shelvedTime: sn.status === 'ON_SHELF' ? '2026-06-12 09:00:00' : '',
+        sapPostStatus: receipt?.sap_post_status || order.sap_post_status || (index % 10 === 0 ? 'FAILED' : 'POSTED'),
+        sapMaterialDocNo: receipt?.sap_material_doc_no || order.sap_material_doc_no || '',
+        sapPostResult: receipt?.sap_post_result || order.sap_post_result || '',
+        snStatus: sn.status,
+        qualityStatus: sn.quality_status || 'QUALIFIED'
+      })
+    })
+}
+
+function productReportBase(store: any, source: Row, product: Row, extra: Row = {}): Row {
+  const warehouse = findWarehouse(store, source)
+  return {
+    ownerCode: source.owner_code || product.owner_code || '3060',
+    ownerName: source.owner_name || product.owner_name || OWNER_NAMES[source.owner_code || product.owner_code || '3060'] || '',
+    warehouseCode: source.warehouse_code || warehouse.warehouse_code || '',
+    warehouseName: source.warehouse_name || warehouse.warehouse_name || '',
+    productCode: source.product_code || product.product_code || '',
+    productName: source.product_name || product.product_name || '',
+    productNameEn: product.product_name_en || '',
+    productFamily: product.product_family || '',
+    productClass: product.product_class || '',
+    productCategory: product.category || source.category || '',
+    unit: source.unit || product.unit || 'PCS',
+    ...extra
+  }
+}
+
+function findProduct(store: any, source: Row) {
+  return (store.products || []).find((product: Row) => Number(product.id) === Number(source.product_id) || product.product_code === source.product_code) || {}
+}
+
+function findWarehouse(store: any, source: Row) {
+  return (store.warehouses || []).find((warehouse: Row) => Number(warehouse.id) === Number(source.warehouse_id) || warehouse.warehouse_code === source.warehouse_code) || {}
+}
+
+function reportQtyByProduct(rows: Row[] = [], productCode: string, field: string) {
+  return rows
+    .filter((row) => row.product_code === productCode)
+    .reduce((total, row) => total + Number(row[field] || 0), 0)
+}
+
+function daysBetween(startDate: unknown, endDate: unknown) {
+  if (!startDate || !endDate) return 0
+  const start = new Date(String(startDate).slice(0, 10))
+  const end = new Date(String(endDate).slice(0, 10))
+  if (Number.isNaN(start.getTime()) || Number.isNaN(end.getTime())) return 0
+  return Math.max(Math.floor((end.getTime() - start.getTime()) / 86400000), 0)
+}
+
+function filterReportRows(rows: Row[], params: Row) {
+  return rows.filter((row) => Object.keys(params || {}).every((key) => {
+    const value = params[key]
+    if (['pageNum', 'pageSize', 'startDate', 'endDate'].includes(key) || value === '' || value == null) return true
+    const rowValue = String(row[key] ?? row[toSnake(key)] ?? '').toLowerCase()
+    return rowValue.includes(String(value).toLowerCase())
+  })).filter((row) => {
+    const startDate = params.startDate ? String(params.startDate).slice(0, 10) : ''
+    const endDate = params.endDate ? String(params.endDate).slice(0, 10) : ''
+    if (!startDate && !endDate) return true
+    const rowDate = String(row.reportDate || row.receiptDate || row.shipmentDate || row.asOfDate || row.inboundDate || row.receiptTime || row.shipmentTime || '').slice(0, 10)
+    if (!rowDate) return true
+    return (!startDate || rowDate >= startDate) && (!endDate || rowDate <= endDate)
+  })
+}
+
+function reportExportCsv(reportKey: string, rows: Row[]) {
+  const columns = REPORT_EXPORT_COLUMNS[reportKey] || Object.keys(rows[0] || {}).map((key) => [key, key] as [string, string])
+  return csvString(columns.map(([label]) => label), rows.map((row) => columns.map(([, prop]) => row[prop] ?? row[toSnake(prop)] ?? '')))
 }
 
 function csvFile(filename: string, content: string) {
@@ -2488,7 +3064,10 @@ function outboundOrderRows(store: any) {
       allocated_qty: lines.length ? sum(lines, 'allocated_qty') : Number(order.allocated_qty || 0),
       picked_qty: lines.length ? sum(lines, 'picked_qty') : Number(order.picked_qty || 0),
       review_qty: lines.length ? sum(lines, 'review_qty') : Number(order.review_qty || 0),
-      shipped_qty: lines.length ? sum(lines, 'shipped_qty') : Number(order.shipped_qty || 0)
+      shipped_qty: lines.length ? sum(lines, 'shipped_qty') : Number(order.shipped_qty || 0),
+      shipment_order_no: order.shipment_order_no || order.order_no,
+      order_type: order.order_type || order.outbound_type,
+      lines
     }
   })
 }
@@ -2544,31 +3123,132 @@ function mockOutboundOrder(store: any, id: number) {
 
 function mockOutboundDetail(store: any, id: number) {
   const order = mockOutboundOrder(store, id)
+  const allocations = store.inventoryAllocations
+    .filter((row: Row) => row.outbound_order_id === id)
+    .map((row: Row) => mockEnrichOutboundAllocation(store, order, row))
+  const shipments = store.shipmentRecords
+    .filter((row: Row) => row.outbound_order_id === id)
+    .map((row: Row) => mockEnrichShipmentRecord(store, order, row, allocations))
+  const interfaceLogs = store.interfaceLogs.filter((row: Row) => row.business_doc_no === order.order_no || row.business_doc_no === order.source_order_no)
   return {
     order,
     details: (store.outboundOrderLines || [])
       .filter((line: Row) => Number(line.order_id) === Number(id))
-      .map((line: Row) => ({ ...line, status: order.status })),
-    allocations: store.inventoryAllocations.filter((row: Row) => row.outbound_order_id === id),
+      .map((line: Row) => ({ ...line, status: line.status || line.line_status || order.status, line_status: line.line_status || line.status || order.status })),
+    allocations,
     pickingTasks: store.pickingTasks.filter((row: Row) => row.outbound_order_id === id),
-    pickingRecords: store.pickingRecords.filter((row: Row) => row.outbound_order_id === id),
+    pickingRecords: store.pickingRecords
+      .filter((row: Row) => row.outbound_order_id === id)
+      .map((row: Row) => mockEnrichPickingRecord(store, order, row)),
     reviewRecords: store.reviewRecords.filter((row: Row) => row.outbound_order_id === id),
-    shipments: store.shipmentRecords.filter((row: Row) => row.outbound_order_id === id),
-    interfaceLogs: store.interfaceLogs.filter((row: Row) => row.business_doc_no === order.order_no || row.business_doc_no === order.source_order_no),
+    shipments,
+    shipmentRecords: shipments,
+    interfaceLogs,
+    sapLogs: interfaceLogs,
     operationLogs: store.operationLogs.filter((row: Row) => row.business_doc_no === order.order_no),
     exceptions: store.outboundExceptions.filter((row: Row) => row.outbound_order_no === order.order_no)
   }
 }
 
+function mockEnrichOutboundAllocation(store: any, order: Row, allocation: Row) {
+  const line = (store.outboundOrderLines || []).find((row: Row) => Number(row.id) === Number(allocation.outbound_detail_id || allocation.line_id))
+  const sn = (store.serialNumbers || []).find((row: Row) => row.sn_code && row.sn_code === allocation.sn_code)
+  return {
+    ...allocation,
+    line_no: allocation.line_no || line?.line_no,
+    product_code: allocation.product_code || line?.product_code,
+    product_name: allocation.product_name || line?.product_name || line?.product_description,
+    owner_code: allocation.owner_code || order.owner_code || mockRowOwner(store, allocation),
+    owner_name: allocation.owner_name || order.owner_name || mockRowOwnerName(store, allocation),
+    pallet_code: allocation.pallet_code || sn?.pallet_code || '',
+    box_code: allocation.box_code || sn?.box_code || ''
+  }
+}
+
+function mockEnrichPickingRecord(store: any, order: Row, record: Row) {
+  const allocation = (store.inventoryAllocations || []).find((row: Row) => {
+    if (Number(row.outbound_order_id) !== Number(order.id)) return false
+    if (record.sn_code && !String(record.sn_code).startsWith('NONSN-')) return row.sn_code === record.sn_code
+    return row.location_code === record.location_code && ['PICKED', 'REVIEWED', 'SHIPPED'].includes(row.allocation_status)
+  })
+  const enrichedAllocation: Row = allocation ? mockEnrichOutboundAllocation(store, order, allocation) : {}
+  return {
+    ...record,
+    ...enrichedAllocation,
+    id: record.id,
+    task_no: record.task_no,
+    sn_code: record.sn_code,
+    location_code: record.location_code || enrichedAllocation.location_code,
+    picked_qty: record.picked_qty || enrichedAllocation.allocated_qty || 1,
+    pick_mode: enrichedAllocation.allocation_mode || (String(record.sn_code || '').startsWith('NONSN-') ? 'DIRECT_PICK' : 'AUTO_FIFO')
+  }
+}
+
+function mockEnrichShipmentRecord(store: any, order: Row, shipment: Row, allocations: Row[]) {
+  const shipped = allocations.filter((row: Row) => row.allocation_status === 'SHIPPED')
+  const first = shipped[0] || {}
+  return {
+    ...shipment,
+    line_no: first.line_no || '',
+    product_code: first.product_code || '',
+    product_name: first.product_name || '',
+    owner_code: shipment.owner_code || order.owner_code || '',
+    owner_name: shipment.owner_name || order.owner_name || '',
+    pallet_code: first.pallet_code || '',
+    box_code: first.box_code || '',
+    sn_code: shipped.map((row: Row) => row.sn_code).filter(Boolean).slice(0, 3).join(', '),
+    shipment_status: shipment.shipment_status || shipment.status || 'SHIPPED'
+  }
+}
+
+function mockRowOwner(store: any, row: Row) {
+  return row.owner_code || row.ownerCode || store.products.find((product: Row) => product.product_code === row.product_code || Number(product.id) === Number(row.product_id))?.owner_code || ''
+}
+
+function mockRowOwnerName(store: any, row: Row) {
+  return row.owner_name || row.ownerName || store.products.find((product: Row) => product.product_code === row.product_code || Number(product.id) === Number(row.product_id))?.owner_name || ''
+}
+
+function mockSameOwner(store: any, order: Row, row: Row) {
+  const orderOwner = String(order.owner_code || order.ownerCode || '')
+  const rowOwner = String(mockRowOwner(store, row) || '')
+  return !orderOwner || !rowOwner || orderOwner === rowOwner
+}
+
+function mockAvailableInventoryRow(row: Row) {
+  return ['QUALIFIED', 'AVAILABLE', undefined, ''].includes(row.inventory_status) && Number(row.available_qty || 0) > 0 && Number(row.frozen_qty || 0) === 0
+}
+
+function mockActiveAllocation(row: Row) {
+  return ['ALLOCATED', 'PICKED', 'REVIEWED'].includes(row.allocation_status)
+}
+
+function mockInventoryForLine(store: any, order: Row, line: Row, source?: Row) {
+  return (store.inventory || []).find((row: Row) =>
+    row.warehouse_code === order.warehouse_code &&
+    row.product_code === line.product_code &&
+    (!source?.location_code || row.location_code === source.location_code) &&
+    mockSameOwner(store, order, row)
+  )
+}
+
 function mockAllocationView(store: any, id: number) {
   const order = mockOutboundOrder(store, id)
-  const availableInventory = store.serialNumbers
-    .filter((row: Row) => row.warehouse_code === order.warehouse_code && row.product_code === order.product_code && ['ON_SHELF', 'ALLOCATED', 'PICKED', 'REVIEWED'].includes(row.status))
-    .map((row: Row) => ({ ...row, sn_status: row.status, inventory_status: row.sn_code.startsWith('SN-BAD-') ? (row.quality_status === 'UNQUALIFIED' ? 'UNQUALIFIED' : 'FROZEN') : 'QUALIFIED', batch_no: row.sn_code.startsWith('SN-BAD-') ? 'BATCH-BAD-DEMO' : 'BATCH-OUT-DEMO', available_qty: row.status === 'ON_SHELF' && row.quality_status === 'QUALIFIED' && !row.locked_flag ? 1 : 0, frozen_flag: row.location_code === 'A02-01-07' ? 1 : 0 }))
-  const recommendedInventory = availableInventory
-    .filter((row: Row) => row.sn_status === 'ON_SHELF' && row.inventory_status === 'QUALIFIED' && row.quality_status === 'QUALIFIED' && !row.locked_flag && !row.frozen_flag)
-    .slice(0, Math.max(Number(order.planned_qty || 0) - Number(order.allocated_qty || 0), 0))
-  return { order, availableInventory, recommendedInventory, allocations: store.inventoryAllocations.filter((row: Row) => row.outbound_order_id === id) }
+  const lines = (store.outboundOrderLines || []).filter((line: Row) => Number(line.order_id) === id)
+  const availableInventory = lines.flatMap((line: Row) => {
+    if (Number(line.sn_required ?? line.sn_managed ?? 1) === 0) {
+      return (store.inventory || [])
+        .filter((row: Row) => row.warehouse_code === order.warehouse_code && row.product_code === line.product_code && mockSameOwner(store, order, row) && Number(row.available_qty || 0) > 0)
+        .map((row: Row) => ({ ...row, owner_code: mockRowOwner(store, row), owner_name: mockRowOwnerName(store, row), line_no: line.line_no, line_id: line.id, sn_code: '', sn_status: '', quality_status: 'QUALIFIED', frozen_flag: Number(row.frozen_qty || 0) > 0 ? 1 : 0 }))
+    }
+    return store.serialNumbers
+      .filter((row: Row) => row.warehouse_code === order.warehouse_code && row.product_code === line.product_code && mockSameOwner(store, order, row) && ['ON_SHELF', 'ALLOCATED', 'PICKED', 'REVIEWED'].includes(row.status))
+      .map((row: Row) => ({ ...row, owner_code: mockRowOwner(store, row), owner_name: mockRowOwnerName(store, row), line_no: line.line_no, line_id: line.id, sn_status: row.status, inventory_status: row.sn_code.startsWith('SN-BAD-') ? (row.quality_status === 'UNQUALIFIED' ? 'UNQUALIFIED' : 'FROZEN') : 'QUALIFIED', batch_no: row.sn_code.startsWith('SN-BAD-') ? 'BATCH-BAD-DEMO' : 'BATCH-OUT-DEMO', available_qty: row.status === 'ON_SHELF' && row.quality_status === 'QUALIFIED' && !row.locked_flag ? 1 : 0, frozen_flag: row.location_code === 'A02-01-07' ? 1 : 0 }))
+  })
+  const recommendedInventory = lines.flatMap((line: Row) => availableInventory
+    .filter((row: Row) => Number(row.line_id) === Number(line.id) && row.inventory_status === 'QUALIFIED' && row.quality_status === 'QUALIFIED' && !row.locked_flag && !row.frozen_flag && Number(row.available_qty || 0) > 0)
+    .slice(0, Math.max(Number(line.planned_qty || line.order_qty || 0) - Number(line.allocated_qty || 0), 0)))
+  return { order, lines, availableInventory, recommendedInventory, allocations: store.inventoryAllocations.filter((row: Row) => row.outbound_order_id === id).map((row: Row) => ({ ...row, owner_code: order.owner_code, owner_name: order.owner_name })) }
 }
 
 function mockCreateOutbound(store: any, body: Row, type: string) {
@@ -2604,6 +3284,84 @@ function mockCreateOutbound(store: any, body: Row, type: string) {
   return mockOutboundDetail(store, id)
 }
 
+function mockCreateShippingOrderV3(store: any, body: Row) {
+  const id = Date.now()
+  const orderType = normalizeMockOutboundType(String(body.orderType || body.outboundType || 'SALES_OUTBOUND'))
+  const orderNo = body.shipmentOrderNo || body.outboundOrderNo || body.orderNo || `${mockOutboundPrefix(orderType)}${id}`
+  const warehouse = store.warehouses.find((item: Row) => item.warehouse_code === body.warehouseCode) || store.warehouses[0]
+  const target = store.warehouses.find((item: Row) => item.warehouse_code === body.targetWarehouseCode) || store.warehouses[1]
+  const customer = store.customers.find((item: Row) => item.customer_code === body.consigneeCode || item.customer_code === body.customerCode) || store.customers[0]
+  const transferType = ['WAREHOUSE_TRANSFER', 'STO_OUTBOUND'].includes(orderType)
+  const inputLines = Array.isArray(body.lines) && body.lines.length
+    ? body.lines
+    : [{ lineNo: 10, productCode: body.productCode || 'GT3-10KD1R11004', orderQty: body.qty || 1, snRequired: true }]
+  const order = {
+    id,
+    order_no: orderNo,
+    shipment_order_no: orderNo,
+    source_order_no: body.relatedOrderNo || body.sourceOrderNo || `${transferType ? 'STO' : 'SO'}${id}`,
+    related_order_no: body.relatedOrderNo || body.sourceOrderNo || `${transferType ? 'STO' : 'SO'}${id}`,
+    sales_order_no: body.salesOrderNo || '',
+    source_system: body.sourceSystem || (transferType ? 'SAP' : 'FULFILLMENT'),
+    outbound_type: orderType,
+    order_type: orderType,
+    warehouse_code: warehouse.warehouse_code,
+    warehouse_name: warehouse.warehouse_name,
+    owner_code: body.ownerCode || '3060',
+    owner_name: body.ownerName || '杭州利沃得',
+    target_warehouse_code: transferType ? target.warehouse_code : '',
+    target_warehouse_name: transferType ? target.warehouse_name : '',
+    consignee_code: transferType ? '' : customer.customer_code,
+    consignee_name: transferType ? '' : customer.customer_name,
+    customer_code: transferType ? '' : customer.customer_code,
+    customer_name: transferType ? '' : customer.customer_name,
+    expected_ship_time: toMockDateTime(body.expectedShipTime),
+    required_delivery_time: toMockDateTime(body.requiredDeliveryTime),
+    planned_qty: inputLines.reduce((sumQty: number, line: Row) => sumQty + Number(line.orderQty || line.plannedQty || 0), 0),
+    allocated_qty: 0,
+    picked_qty: 0,
+    review_qty: 0,
+    shipped_qty: 0,
+    status: 'CREATED',
+    sap_post_status: 'NOT_POSTED',
+    sap_post_result: '',
+    created_at: now()
+  }
+  store.outboundOrders.unshift(order)
+  inputLines.forEach((item: Row, index: number) => {
+    const product = store.products.find((row: Row) => row.product_code === item.productCode) || store.products[0]
+    const line = outboundLine(order, Number(item.lineNo || (index + 1) * 10), product, Number(item.orderQty || item.plannedQty || 1), 0, 0, 0, 0)
+    line.sap_plant = item.sapPlant || order.owner_code
+    line.unit = item.unit || product.unit || 'PCS'
+    line.sn_required = item.snRequired == null ? Number(product.sn_managed || 0) : (item.snRequired ? 1 : 0)
+    line.line_status = 'CREATED'
+    store.outboundOrderLines.unshift(line)
+  })
+  addInterfaceLog(store, transferType ? 'SAP_STO_PUSH' : 'FULFILLMENT_ORDER_PUSH', order.source_system, 'WMS', order.order_no, transferType ? '/api/mock/sap/sto-orders' : '/api/mock/fulfillment/outbound-orders', 'SUCCESS', '')
+  addOutboundOperationLog(store, order.order_no, 'CREATE_SHIPPING_ORDER', 'system', 'SUCCESS', '创建发运订单')
+  saveStore(store)
+  return mockOutboundDetail(store, id)
+}
+
+function normalizeMockOutboundType(value: string) {
+  if (value === 'SALES') return 'SALES_OUTBOUND'
+  if (value === 'TRANSFER') return 'WAREHOUSE_TRANSFER'
+  if (value === 'AFTERSALE') return 'AFTERSALE_OUTBOUND'
+  return value || 'SALES_OUTBOUND'
+}
+
+function mockOutboundPrefix(type: string) {
+  if (type === 'WAREHOUSE_TRANSFER') return 'TR-OUT-'
+  if (type === 'STO_OUTBOUND') return 'STO-OUT-'
+  return 'SO-OUT-'
+}
+
+function toMockDateTime(value: unknown) {
+  if (!value) return ''
+  if (value instanceof Date) return value.toISOString().slice(0, 19).replace('T', ' ')
+  return String(value)
+}
+
 function mockAutoAllocate(store: any, id: number) {
   const order = mockOutboundOrder(store, id)
   const need = Number(order.planned_qty || 0) - Number(order.allocated_qty || 0)
@@ -2620,6 +3378,59 @@ function mockAutoAllocate(store: any, id: number) {
   return mockOutboundDetail(store, id)
 }
 
+function mockAutoAllocateV3(store: any, id: number) {
+  const order = mockOutboundOrder(store, id)
+  const lines = (store.outboundOrderLines || []).filter((line: Row) => Number(line.order_id) === id)
+  let allocated = 0
+  let shortage = 0
+  lines.forEach((line: Row) => {
+    const need = Math.max(Number(line.planned_qty || line.order_qty || 0) - Number(line.allocated_qty || 0), 0)
+    if (need <= 0) return
+    if (Number(line.sn_required ?? line.sn_managed ?? 1) === 0) {
+      let remain = need
+      ;(store.inventory || [])
+        .filter((row: Row) => row.warehouse_code === order.warehouse_code && row.product_code === line.product_code && mockSameOwner(store, order, row) && mockAvailableInventoryRow(row))
+        .forEach((inv: Row) => {
+          if (remain <= 0) return
+          const qty = Math.min(remain, Number(inv.available_qty || 0))
+          inv.available_qty = Number(inv.available_qty || 0) - qty
+          inv.allocated_qty = Number(inv.allocated_qty || 0) + qty
+          store.inventoryAllocations.unshift({ id: Date.now() + Math.random(), allocation_no: `ALLOC-${Date.now()}`, outbound_order_id: id, outbound_order_no: order.order_no, outbound_detail_id: line.id, inventory_id: inv.id || 9001, warehouse_code: order.warehouse_code, location_code: inv.location_code || 'A01-01-01', product_code: line.product_code, product_name: line.product_name, batch_no: inv.batch_no || line.batch_no, sn_code: '', allocated_qty: qty, allocation_mode: 'AUTO_FIFO', allocation_status: 'ALLOCATED', created_at: now() })
+          allocated += qty
+          remain -= qty
+        })
+      shortage += remain
+      return
+    }
+    const serials = (store.serialNumbers || [])
+      .filter((row: Row) => row.warehouse_code === order.warehouse_code && row.product_code === line.product_code && mockSameOwner(store, order, row) && row.status === 'ON_SHELF' && row.quality_status === 'QUALIFIED' && !row.locked_flag && row.location_code !== 'A02-01-07')
+      .slice(0, need)
+      .map((row: Row) => row.sn_code)
+    if (serials.length < need) shortage += need - serials.length
+    serials.forEach((sn: string) => {
+      const snRow = store.serialNumbers.find((row: Row) => row.sn_code === sn)
+      const inv = mockInventoryForLine(store, order, line, snRow)
+      if (snRow) Object.assign(snRow, { status: 'ALLOCATED', locked_flag: 1, locked_order_no: order.order_no, outbound_order_no: order.order_no })
+      if (inv) {
+        inv.available_qty = Math.max(Number(inv.available_qty || 0) - 1, 0)
+        inv.allocated_qty = Number(inv.allocated_qty || 0) + 1
+      }
+      store.inventoryAllocations.unshift({ id: Date.now() + Math.random(), allocation_no: `ALLOC-${Date.now()}-${sn}`, outbound_order_id: id, outbound_order_no: order.order_no, outbound_detail_id: line.id, inventory_id: inv?.id || 9001, warehouse_code: order.warehouse_code, location_code: snRow?.location_code || 'A01-01-01', product_code: line.product_code, product_name: line.product_name, batch_no: inv?.batch_no || 'BATCH-OUT-DEMO', sn_code: sn, allocated_qty: 1, allocation_mode: 'AUTO_FIFO', allocation_status: 'ALLOCATED', created_at: now() })
+      allocated += 1
+    })
+  })
+  refreshMockOrderQty(store, id)
+  order.status = shortage > 0 ? (allocated > 0 ? 'PARTIAL_ALLOCATED' : 'ALLOCATION_EXCEPTION') : 'ALLOCATED'
+  if (shortage > 0) {
+    store.outboundExceptions.unshift({ id: Date.now(), exception_no: `EXC${Date.now()}`, outbound_order_no: order.order_no, exception_type: 'INSUFFICIENT_STOCK', message: `可用库存不足，缺口 ${shortage}`, status: 'OPEN', created_at: now() })
+    addOutboundOperationLog(store, order.order_no, 'ALLOCATE_AUTO', 'wh_admin', 'FAILED', `库存不足，缺口 ${shortage}`)
+  } else {
+    addOutboundOperationLog(store, order.order_no, 'ALLOCATE_AUTO', 'wh_admin', 'SUCCESS', `自动分配 ${allocated}`)
+  }
+  saveStore(store)
+  return mockOutboundDetail(store, id)
+}
+
 function mockManualAllocate(store: any, id: number, body: Row) {
   const order = mockOutboundOrder(store, id)
   const serials = cleanSerials(body.serialNumbers)
@@ -2629,10 +3440,45 @@ function mockManualAllocate(store: any, id: number, body: Row) {
   return mockOutboundDetail(store, id)
 }
 
+function mockManualAllocateV3(store: any, id: number, body: Row) {
+  const order = mockOutboundOrder(store, id)
+  const line = (store.outboundOrderLines || []).find((row: Row) => Number(row.order_id) === id && Number(row.id) === Number(body.lineId)) ||
+    (store.outboundOrderLines || []).find((row: Row) => Number(row.order_id) === id)
+  if (!line) throw new Error('发运订单行不存在')
+  const serials = cleanSerials(body.serialNumbers)
+  if (serials.length) {
+    serials.forEach((sn) => {
+      assertMockAllocatable(store, { ...order, product_code: line.product_code }, sn)
+      const snRow = store.serialNumbers.find((row: Row) => row.sn_code === sn)
+      const inv = mockInventoryForLine(store, order, line, snRow)
+      if (snRow) Object.assign(snRow, { status: 'ALLOCATED', locked_flag: 1, locked_order_no: order.order_no, outbound_order_no: order.order_no })
+      if (inv) {
+        inv.available_qty = Math.max(Number(inv.available_qty || 0) - 1, 0)
+        inv.allocated_qty = Number(inv.allocated_qty || 0) + 1
+      }
+      store.inventoryAllocations.unshift({ id: Date.now() + Math.random(), allocation_no: `ALLOC-${Date.now()}-${sn}`, outbound_order_id: id, outbound_order_no: order.order_no, outbound_detail_id: line.id, inventory_id: inv?.id || 9001, warehouse_code: order.warehouse_code, location_code: snRow?.location_code || 'A01-01-01', product_code: line.product_code, product_name: line.product_name, batch_no: inv?.batch_no || 'BATCH-OUT-DEMO', sn_code: sn, allocated_qty: 1, allocation_mode: 'MANUAL', allocation_status: 'ALLOCATED', created_at: now() })
+    })
+  } else {
+    const qty = Number(body.quantity || 0)
+    if (qty <= 0) throw new Error('请输入人工指定数量或选择 SN')
+    const inv = (store.inventory || []).find((row: Row) => row.warehouse_code === order.warehouse_code && row.product_code === line.product_code && mockSameOwner(store, order, row) && (!body.locationCode || row.location_code === body.locationCode) && mockAvailableInventoryRow(row) && Number(row.available_qty || 0) >= qty)
+    if (!inv) throw new Error('指定库存的产品、货主、仓库或可用数量不满足当前发运订单行，不允许分配。')
+    inv.available_qty = Number(inv.available_qty || 0) - qty
+    inv.allocated_qty = Number(inv.allocated_qty || 0) + qty
+    store.inventoryAllocations.unshift({ id: Date.now() + Math.random(), allocation_no: `ALLOC-${Date.now()}`, outbound_order_id: id, outbound_order_no: order.order_no, outbound_detail_id: line.id, inventory_id: inv.id || 9001, warehouse_code: order.warehouse_code, location_code: inv.location_code || body.locationCode || 'A01-01-01', product_code: line.product_code, product_name: line.product_name, batch_no: inv.batch_no || line.batch_no, sn_code: '', allocated_qty: qty, allocation_mode: 'MANUAL', allocation_status: 'ALLOCATED', created_at: now() })
+  }
+  refreshMockOrderQty(store, id)
+  order.status = Number(order.allocated_qty) >= Number(order.planned_qty) ? 'ALLOCATED' : 'PARTIAL_ALLOCATED'
+  addOutboundOperationLog(store, order.order_no, 'ALLOCATE_MANUAL', 'wh_admin', 'SUCCESS', '人工指定分配')
+  saveStore(store)
+  return mockOutboundDetail(store, id)
+}
+
 function assertMockAllocatable(store: any, order: Row, sn: string) {
   const row = store.serialNumbers.find((item: Row) => item.sn_code === sn)
   if (!row) throw new Error(`SN 不存在: ${sn}`)
-  if (row.product_code !== order.product_code) throw new Error(`SN 产品与出库单不一致: ${sn}`)
+  if (row.product_code !== order.product_code) throw new Error(`当前扫描 SN 对应产品与发运订单行产品不一致，不允许拣货。${sn}`)
+  if (!mockSameOwner(store, order, row)) throw new Error(`当前扫描 SN 对应货主与发运订单货主不一致，不允许拣货。${sn}`)
   if (row.warehouse_code !== order.warehouse_code) throw new Error(`SN 不在当前仓库: ${sn}`)
   if (row.status !== 'ON_SHELF') throw new Error(`SN 不在库或状态不可分配: ${sn}`)
   if (row.quality_status !== 'QUALIFIED') throw new Error(`不合格 SN 不允许出库: ${sn}`)
@@ -2662,18 +3508,95 @@ function mockCancelAllocation(store: any, id: number) {
   allocations.forEach((allocation: Row) => {
     const sn = store.serialNumbers.find((row: Row) => row.sn_code === allocation.sn_code)
     if (sn) Object.assign(sn, { status: 'ON_SHELF', locked_flag: 0, locked_order_no: '', outbound_order_no: '' })
+    const inv = (store.inventory || []).find((row: Row) => Number(row.id) === Number(allocation.inventory_id)) ||
+      (store.inventory || []).find((row: Row) => row.warehouse_code === allocation.warehouse_code && row.product_code === allocation.product_code && (!allocation.batch_no || row.batch_no === allocation.batch_no))
+    const qty = Number(allocation.allocated_qty || 1)
+    if (inv) {
+      inv.available_qty = Number(inv.available_qty || 0) + qty
+      inv.allocated_qty = Math.max(Number(inv.allocated_qty || 0) - qty, 0)
+    }
     allocation.allocation_status = 'CANCELED'
   })
-  const inv = store.inventory.find((row: Row) => row.id === 9001)
-  if (inv) {
-    inv.available_qty += allocations.length
-    inv.allocated_qty = Math.max(Number(inv.allocated_qty || 0) - allocations.length, 0)
-  }
   refreshMockOrderQty(store, id)
   order.status = 'PENDING_ALLOC'
   addOutboundOperationLog(store, order.order_no, 'CANCEL_ALLOCATION', 'wh_admin', 'SUCCESS', '取消分配')
   saveStore(store)
   return mockOutboundDetail(store, id)
+}
+
+function mockCancelAllocationsV3(store: any, id: number, body: Row) {
+  const order = mockOutboundOrder(store, id)
+  const ids = Array.isArray(body.allocationIds) ? body.allocationIds.map(Number) : []
+  const failedItems: Row[] = []
+  let successCount = 0
+  ids.forEach((allocationId: number) => {
+    try {
+      const allocation = (store.inventoryAllocations || []).find((row: Row) => Number(row.id) === Number(allocationId) && Number(row.outbound_order_id) === Number(id))
+      if (!allocation) throw new Error('分配记录不存在')
+      if (allocation.allocation_status !== 'ALLOCATED') throw new Error('仅允许取消未拣货分配记录')
+      const sn = store.serialNumbers.find((row: Row) => row.sn_code === allocation.sn_code)
+      if (sn) Object.assign(sn, { status: 'ON_SHELF', locked_flag: 0, locked_order_no: '', outbound_order_no: '' })
+      const inv = (store.inventory || []).find((row: Row) => Number(row.id) === Number(allocation.inventory_id)) ||
+        (store.inventory || []).find((row: Row) => row.warehouse_code === allocation.warehouse_code && row.product_code === allocation.product_code && (!allocation.batch_no || row.batch_no === allocation.batch_no))
+      const qty = Number(allocation.allocated_qty || 1)
+      if (inv) {
+        inv.available_qty = Number(inv.available_qty || 0) + qty
+        inv.allocated_qty = Math.max(Number(inv.allocated_qty || 0) - qty, 0)
+      }
+      allocation.allocation_status = 'CANCELED'
+      successCount += 1
+    } catch (error: any) {
+      failedItems.push({ id: allocationId, reason: error?.message || '取消失败' })
+    }
+  })
+  refreshMockOrderQty(store, id)
+  addOutboundOperationLog(store, order.order_no, 'CANCEL_ALLOCATION', body.operator || 'wh_admin', failedItems.length ? 'PARTIAL_SUCCESS' : 'SUCCESS', `批量取消分配，成功 ${successCount} 条，失败 ${failedItems.length} 条`)
+  saveStore(store)
+  return { successCount, failedItems }
+}
+
+function mockCancelPicksV3(store: any, id: number, body: Row) {
+  const order = mockOutboundOrder(store, id)
+  const ids = Array.isArray(body.pickIds) ? body.pickIds.map(Number) : []
+  const failedItems: Row[] = []
+  let successCount = 0
+  ids.forEach((pickId: number) => {
+    try {
+      mockCancelPickV3(store, id, pickId, body)
+      successCount += 1
+    } catch (error: any) {
+      failedItems.push({ id: pickId, reason: error?.message || '取消失败' })
+    }
+  })
+  addOutboundOperationLog(store, order.order_no, 'CANCEL_PICK_BATCH', body.operator || 'wh_admin', failedItems.length ? 'PARTIAL_SUCCESS' : 'SUCCESS', `批量取消拣货，成功 ${successCount} 条，失败 ${failedItems.length} 条`)
+  saveStore(store)
+  return { successCount, failedItems }
+}
+
+function mockCancelShipmentsV3(store: any, id: number, body: Row) {
+  const order = mockOutboundOrder(store, id)
+  const ids = Array.isArray(body.shipmentIds) ? body.shipmentIds.map(Number) : []
+  const failedItems: Row[] = []
+  let successCount = 0
+  ids.forEach((shipmentId: number) => {
+    try {
+      mockCancelShipmentV3(store, id, shipmentId, body)
+      successCount += 1
+    } catch (error: any) {
+      failedItems.push({ id: shipmentId, reason: error?.message || '取消失败' })
+    }
+  })
+  addOutboundOperationLog(store, order.order_no, 'CANCEL_SHIPMENT_BATCH', body.operator || 'logistics', failedItems.length ? 'PARTIAL_SUCCESS' : 'SUCCESS', `批量取消发货，成功 ${successCount} 条，失败 ${failedItems.length} 条`)
+  saveStore(store)
+  return { successCount, failedItems }
+}
+
+function mockPickingList(store: any, id: number) {
+  const detail = mockOutboundDetail(store, id)
+  return {
+    order: detail.order,
+    items: (detail.allocations || []).filter((row: Row) => ['ALLOCATED', 'PICKED', 'REVIEWED'].includes(row.allocation_status))
+  }
 }
 
 function mockGeneratePicking(store: any, id: number) {
@@ -2685,6 +3608,91 @@ function mockGeneratePicking(store: any, id: number) {
   addOutboundOperationLog(store, order.order_no, 'GENERATE_PICKING_TASK', 'wh_admin', 'SUCCESS', '生成拣货任务')
   saveStore(store)
   return mockOutboundDetail(store, id)
+}
+
+function mockOrderPick(store: any, id: number, body: Row) {
+  const order = mockOutboundOrder(store, id)
+  const line = (store.outboundOrderLines || []).find((row: Row) => Number(row.order_id) === id && Number(row.id) === Number(body.lineId)) ||
+    (store.outboundOrderLines || []).find((row: Row) => Number(row.order_id) === id)
+  if (!line) throw new Error('发运订单行不存在')
+  const snRequired = Number(line.sn_required ?? line.sn_managed ?? 1) === 1
+  const hasOrderAllocation = store.inventoryAllocations.some((row: Row) => Number(row.outbound_order_id) === Number(id) && mockActiveAllocation(row))
+  if (snRequired) {
+    const serials = cleanSerials(body.serialNumbers || body.scanCode || body.snCode)
+    if (!serials.length) throw new Error('SN 管理产品必须扫描 SN')
+    serials.forEach((sn) => {
+      let allocation = store.inventoryAllocations.find((row: Row) => Number(row.outbound_order_id) === Number(id) && Number(row.outbound_detail_id || row.line_id || line.id) === Number(line.id) && row.sn_code === sn)
+      if (!allocation && hasOrderAllocation) throw new Error(`当前扫描 SN 不属于此订单的分配结果，不允许拣货。${sn}`)
+      if (!allocation) {
+        assertMockAllocatable(store, { ...order, product_code: line.product_code }, sn)
+        const snRow = store.serialNumbers.find((row: Row) => row.sn_code === sn)
+        if (snRow) Object.assign(snRow, { status: 'ALLOCATED', locked_flag: 1, locked_order_no: order.order_no, outbound_order_no: order.order_no })
+        const inv = mockInventoryForLine(store, order, line, snRow)
+        if (inv) {
+          inv.available_qty = Math.max(Number(inv.available_qty || 0) - 1, 0)
+          inv.allocated_qty = Number(inv.allocated_qty || 0) + 1
+        }
+        store.inventoryAllocations.unshift({ id: Date.now() + Math.random(), allocation_no: `ALLOC-${Date.now()}-${sn}`, outbound_order_id: id, outbound_order_no: order.order_no, outbound_detail_id: line.id, inventory_id: inv?.id || 9001, warehouse_code: order.warehouse_code, location_code: snRow?.location_code || 'A01-01-01', product_code: line.product_code, product_name: line.product_name, batch_no: inv?.batch_no || 'BATCH-OUT-DEMO', sn_code: sn, allocated_qty: 1, allocation_mode: 'DIRECT_PICK', allocation_status: 'ALLOCATED', created_at: now() })
+        allocation = store.inventoryAllocations.find((row: Row) => row.outbound_order_id === id && row.sn_code === sn)
+      }
+      if (!allocation || allocation.allocation_status !== 'ALLOCATED') throw new Error(`SN 已拣货或状态不允许: ${sn}`)
+      allocation.allocation_status = 'PICKED'
+      const snRow = store.serialNumbers.find((row: Row) => row.sn_code === sn)
+      if (snRow) snRow.status = 'PICKED'
+      const task = ensureMockTask(store, order, line)
+      store.pickingRecords.unshift({ id: Date.now() + Math.random(), task_id: task.id, task_no: task.task_no, outbound_order_id: id, outbound_order_no: order.order_no, sn_code: sn, location_code: allocation.location_code || 'A01-01-01', picker: body.operator || 'wh_admin', result: 'SUCCESS', created_at: now() })
+    })
+  } else {
+    const qty = Number(body.quantity || 0)
+    if (qty <= 0) throw new Error('非 SN 产品请输入拣货数量')
+    const remain = Number(line.planned_qty || line.order_qty || 0) - Number(line.picked_qty || 0)
+    if (qty > remain) throw new Error('拣货数量不能超过订单剩余数量')
+    const task = ensureMockTask(store, order, line)
+    if (hasOrderAllocation) {
+      let need = qty
+      const allocations = store.inventoryAllocations.filter((row: Row) => Number(row.outbound_order_id) === Number(id) && Number(row.outbound_detail_id || row.line_id || line.id) === Number(line.id) && row.allocation_status === 'ALLOCATED')
+      const allocQty = allocations.reduce((total: number, row: Row) => total + Number(row.allocated_qty || 1), 0)
+      if (qty > allocQty) throw new Error('当前行已分配未拣货数量不足，不允许按分配结果拣货。')
+      allocations.forEach((allocation: Row) => {
+        if (need <= 0) return
+        const allocationQty = Number(allocation.allocated_qty || 1)
+        const pickQty = Math.min(allocationQty, need)
+        need -= pickQty
+        if (pickQty < allocationQty) {
+          allocation.allocated_qty = allocationQty - pickQty
+          store.inventoryAllocations.unshift({ ...allocation, id: Date.now() + Math.random(), allocation_no: `${allocation.allocation_no || 'ALLOC'}-PICK-${Date.now()}`, allocated_qty: pickQty, allocation_status: 'PICKED' })
+        } else {
+          allocation.allocation_status = 'PICKED'
+        }
+      })
+    } else {
+      const inv = (store.inventory || []).find((row: Row) => row.warehouse_code === order.warehouse_code && row.product_code === line.product_code && mockSameOwner(store, order, row) && (!body.locationCode || row.location_code === body.locationCode) && mockAvailableInventoryRow(row) && Number(row.available_qty || 0) >= qty)
+      if (!inv) throw new Error('当前行产品在发货仓库没有足够可直接拣货库存。')
+      inv.available_qty = Math.max(Number(inv.available_qty || 0) - qty, 0)
+      inv.allocated_qty = Number(inv.allocated_qty || 0) + qty
+      store.inventoryAllocations.unshift({ id: Date.now() + Math.random(), allocation_no: `ALLOC-${Date.now()}`, outbound_order_id: id, outbound_order_no: order.order_no, outbound_detail_id: line.id, inventory_id: inv.id || 9001, warehouse_code: order.warehouse_code, location_code: inv.location_code || body.locationCode || 'A01-01-01', product_code: line.product_code, product_name: line.product_name, batch_no: inv.batch_no || line.batch_no, sn_code: '', allocated_qty: qty, allocation_mode: 'DIRECT_PICK', allocation_status: 'PICKED', created_at: now() })
+    }
+    store.pickingRecords.unshift({ id: Date.now() + Math.random(), task_id: task.id, task_no: task.task_no, outbound_order_id: id, outbound_order_no: order.order_no, sn_code: `NONSN-${Date.now()}`, picked_qty: qty, location_code: body.locationCode || 'A01-01-01', picker: body.operator || 'wh_admin', result: 'SUCCESS', created_at: now() })
+  }
+  refreshMockTaskRows(store, id)
+  refreshMockOrderQty(store, id)
+  order.status = Number(order.picked_qty) >= Number(order.planned_qty) ? 'PICKED' : 'PARTIAL_PICKED'
+  addOutboundOperationLog(store, order.order_no, 'PICK', body.operator || 'wh_admin', 'SUCCESS', '发运订单拣货')
+  saveStore(store)
+  return mockOutboundDetail(store, id)
+}
+
+function ensureMockTask(store: any, order: Row, line: Row) {
+  let task = store.pickingTasks.find((row: Row) => Number(row.outbound_order_id) === Number(order.id) && row.product_code === line.product_code)
+  if (!task) {
+    task = taskRow(Date.now(), `PICK${Date.now()}`, { ...order, product_code: line.product_code, product_name: line.product_name }, Number(line.planned_qty || line.order_qty || 0), 0, 'PICKING')
+    store.pickingTasks.unshift(task)
+  }
+  return task
+}
+
+function refreshMockTaskRows(store: any, orderId: number) {
+  store.pickingTasks.filter((row: Row) => Number(row.outbound_order_id) === Number(orderId)).forEach((task: Row) => refreshMockTask(store, task.id))
 }
 
 function mockPickingScan(store: any, taskId: number, body: Row) {
@@ -2765,6 +3773,93 @@ function mockShip(store: any, id: number, body: Row) {
   return mockOutboundDetail(store, id)
 }
 
+function mockShipV3(store: any, id: number, body: Row) {
+  const order = mockOutboundOrder(store, id)
+  const lineId = Number(body.lineId || body.detailId || 0)
+  const pickedAllocations = store.inventoryAllocations.filter((row: Row) => {
+    const sameOrder = Number(row.outbound_order_id) === Number(id)
+    const sameLine = !lineId || Number(row.outbound_detail_id || row.line_id || 0) === lineId
+    return sameOrder && sameLine && ['PICKED', 'REVIEWED'].includes(row.allocation_status)
+  })
+  if (!pickedAllocations.length) throw new Error('没有可发运的已拣货库存')
+
+  const pickedQty = pickedAllocations.reduce((total: number, row: Row) => total + Number(row.allocated_qty || 1), 0)
+  let remainingQty = Number(body.shipQty || body.quantity || pickedQty)
+  if (remainingQty <= 0) throw new Error('请输入本次发运数量')
+  if (remainingQty > pickedQty) throw new Error('发运数量不能超过已拣货数量')
+
+  const shippedAllocations: Row[] = []
+  pickedAllocations.forEach((allocation: Row) => {
+    if (remainingQty <= 0) return
+    const allocationQty = Number(allocation.allocated_qty || 1)
+    const shipQty = Math.min(allocationQty, remainingQty)
+    remainingQty -= shipQty
+    if (shipQty < allocationQty) {
+      allocation.allocated_qty = allocationQty - shipQty
+      const shippedAllocation = {
+        ...allocation,
+        id: Date.now() + Math.random(),
+        allocation_no: `${allocation.allocation_no || 'ALLOC'}-SHIP-${Date.now()}`,
+        allocated_qty: shipQty,
+        allocation_status: 'SHIPPED'
+      }
+      store.inventoryAllocations.unshift(shippedAllocation)
+      shippedAllocations.push(shippedAllocation)
+    } else {
+      allocation.allocation_status = 'SHIPPED'
+      shippedAllocations.push(allocation)
+    }
+  })
+
+  const shippedQty = shippedAllocations.reduce((total: number, row: Row) => total + Number(row.allocated_qty || 1), 0)
+  shippedAllocations.forEach((allocation: Row) => {
+    const inv = (store.inventory || []).find((row: Row) => Number(row.id) === Number(allocation.inventory_id)) ||
+      (store.inventory || []).find((row: Row) => row.warehouse_code === order.warehouse_code && row.product_code === allocation.product_code && (!allocation.batch_no || row.batch_no === allocation.batch_no))
+    const qty = Number(allocation.allocated_qty || 1)
+    if (inv) {
+      inv.total_qty = Math.max(Number(inv.total_qty || 0) - qty, 0)
+      inv.allocated_qty = Math.max(Number(inv.allocated_qty || 0) - qty, 0)
+    }
+    if (allocation.sn_code) {
+      const sn = store.serialNumbers.find((row: Row) => row.sn_code === allocation.sn_code)
+      if (sn) Object.assign(sn, { status: 'SHIPPED', locked_flag: 0, locked_order_no: '', outbound_order_no: order.order_no, sold_flag: 1, market_flag: 1 })
+    }
+  })
+
+  refreshMockOrderQty(store, id)
+  refreshMockTaskRows(store, id)
+  const fullShipped = Number(order.shipped_qty || 0) >= Number(order.planned_qty || 0)
+  const shipmentStatus = fullShipped ? 'SHIPPED' : 'PARTIAL_SHIPPED'
+  const carrier = body.carrierName || body.carrier || body.logisticsCompany || 'SF'
+  const trackingNo = body.trackingNo || body.tracking_no || `SF${Date.now()}`
+  order.status = shipmentStatus
+  order.carrier_name = carrier
+  order.logistics_company = carrier
+  order.tracking_no = trackingNo
+  order.updated_at = now()
+  store.shipmentRecords.unshift({
+    ...shipmentRow(`SHIP${Date.now()}`, order, shippedQty, carrier, trackingNo),
+    shipment_status: shipmentStatus,
+    sap_post_status: 'NOT_POSTED',
+    remark: body.remark || '发运订单 Mock 发运'
+  })
+  const shipment = store.shipmentRecords[0]
+
+  const traceOk = mockTraceCallback(store, id, Boolean(body.forceTraceFail), false)
+  const sapOk = mockSapCallback(store, id, Boolean(body.forceSapFail), false)
+  shipment.sap_post_status = sapOk ? 'SUCCESS' : 'FAILED'
+  shipment.sap_material_doc_no = sapOk ? order.sap_material_doc_no : ''
+  shipment.sap_post_result = sapOk ? 'SAP 出库扣减 Mock 成功' : 'SAP 出库扣减 Mock 失败'
+  order.status = shipmentStatus
+  order.sap_post_result = sapOk ? 'SAP 出库扣减 Mock 成功' : 'SAP 出库扣减 Mock 失败'
+  if (!traceOk || !sapOk) {
+    order.sap_post_status = sapOk ? order.sap_post_status : 'FAILED'
+  }
+  addOutboundOperationLog(store, order.order_no, 'SHIP_CONFIRM', body.operator || 'logistics', 'SUCCESS', `发运确认 ${shippedQty}`)
+  saveStore(store)
+  return mockOutboundDetail(store, id)
+}
+
 function mockTraceCallback(store: any, id: number, forceFail: boolean, persist = true) {
   const order = mockOutboundOrder(store, id)
   if (forceFail) {
@@ -2800,28 +3895,230 @@ function mockSapCallback(store: any, id: number, forceFail: boolean, persist = t
   return true
 }
 
+function mockCancelOrder(store: any, id: number, body: Row) {
+  const order = mockOutboundOrder(store, id)
+  if (!['CREATED', 'PENDING_ALLOC'].includes(order.status)) throw new Error('只有创建状态发运订单允许取消')
+  order.status = 'CANCELED'
+  ;(store.outboundOrderLines || []).filter((line: Row) => Number(line.order_id) === id).forEach((line: Row) => {
+    line.status = 'CANCELED'
+    line.line_status = 'CANCELED'
+  })
+  addOutboundOperationLog(store, order.order_no, 'CANCEL', body.operator || 'planner', 'SUCCESS', body.reason || '页面取消')
+  saveStore(store)
+  return mockOutboundDetail(store, id)
+}
+
+function mockCancelPickV3(store: any, id: number, pickId: number, body: Row) {
+  const order = mockOutboundOrder(store, id)
+  const record = (store.pickingRecords || []).find((row: Row) => Number(row.id) === Number(pickId) && Number(row.outbound_order_id) === Number(id))
+  if (!record) throw new Error('拣货记录不存在')
+  if (record.result === 'CANCELED') throw new Error('该拣货记录已取消')
+  const task = (store.pickingTasks || []).find((row: Row) => Number(row.id) === Number(record.task_id))
+  const qty = Math.max(Number(record.picked_qty || 1), 1)
+  let remaining = qty
+  const candidates = (store.inventoryAllocations || []).filter((allocation: Row) => {
+    if (Number(allocation.outbound_order_id) !== Number(id)) return false
+    if (!['PICKED', 'REVIEWED'].includes(allocation.allocation_status)) return false
+    if (record.sn_code && !String(record.sn_code).startsWith('NONSN-')) return allocation.sn_code === record.sn_code
+    return (!task || allocation.product_code === task.product_code) && (!record.location_code || allocation.location_code === record.location_code)
+  })
+  if (!candidates.length) throw new Error('当前拣货记录已发运或无可回退分配数据')
+  candidates.forEach((allocation: Row) => {
+    if (remaining <= 0) return
+    const allocationQty = Number(allocation.allocated_qty || 1)
+    const cancelQty = Math.min(allocationQty, remaining)
+    remaining -= cancelQty
+    if (cancelQty < allocationQty) {
+      allocation.allocated_qty = allocationQty - cancelQty
+      const rollback: Row = { ...allocation, id: Date.now() + Math.random(), allocation_no: `${allocation.allocation_no || 'ALLOC'}-CANCEL-PICK-${Date.now()}`, allocated_qty: cancelQty }
+      rollback.allocation_status = allocation.allocation_mode === 'DIRECT_PICK' ? 'CANCELED' : 'ALLOCATED'
+      store.inventoryAllocations.unshift(rollback)
+      rollbackPickInventory(store, order, rollback, allocation.allocation_mode === 'DIRECT_PICK')
+    } else {
+      allocation.allocation_status = allocation.allocation_mode === 'DIRECT_PICK' ? 'CANCELED' : 'ALLOCATED'
+      rollbackPickInventory(store, order, allocation, allocation.allocation_mode === 'DIRECT_PICK')
+    }
+  })
+  if (remaining > 0) throw new Error('可取消拣货数量不足')
+  record.result = 'CANCELED'
+  record.error_message = body.reason || '取消拣货'
+  refreshMockTaskRows(store, id)
+  refreshMockOrderQty(store, id)
+  addOutboundOperationLog(store, order.order_no, 'CANCEL_PICK', body.operator || 'wh_admin', 'SUCCESS', body.reason || '取消拣货')
+  saveStore(store)
+  return mockOutboundDetail(store, id)
+}
+
+function rollbackPickInventory(store: any, order: Row, allocation: Row, releaseDirectPick: boolean) {
+  const qty = Number(allocation.allocated_qty || 1)
+  if (releaseDirectPick) {
+    const inv = (store.inventory || []).find((row: Row) => Number(row.id) === Number(allocation.inventory_id))
+    if (inv) {
+      inv.available_qty = Number(inv.available_qty || 0) + qty
+      inv.allocated_qty = Math.max(Number(inv.allocated_qty || 0) - qty, 0)
+    }
+  }
+  if (allocation.sn_code) {
+    const sn = (store.serialNumbers || []).find((row: Row) => row.sn_code === allocation.sn_code)
+    if (sn) {
+      if (releaseDirectPick) Object.assign(sn, { status: 'ON_SHELF', locked_flag: 0, locked_order_no: '', outbound_order_no: '' })
+      else Object.assign(sn, { status: 'ALLOCATED', locked_flag: 1, locked_order_no: order.order_no, outbound_order_no: order.order_no })
+    }
+  }
+}
+
+function mockCancelShipmentV3(store: any, id: number, shipmentId: number, body: Row) {
+  const order = mockOutboundOrder(store, id)
+  const shipment = (store.shipmentRecords || []).find((row: Row) => Number(row.id) === Number(shipmentId) && Number(row.outbound_order_id) === Number(id))
+  if (!shipment) throw new Error('发运批次不存在')
+  if (shipment.shipment_status === 'CANCELED') throw new Error('该发运批次已取消')
+  if (['SUCCESS', 'POSTED'].includes(shipment.sap_post_status)) throw new Error('当前发货批次已回传 SAP 成功，不允许直接取消发货，请走 SAP 冲销流程。')
+  if (['CLOSED', 'CANCELED'].includes(order.status)) throw new Error('已关闭或已取消订单不允许取消发货')
+  let remaining = Number(shipment.shipped_qty || shipment.ship_qty || 0)
+  const shippedAllocations = (store.inventoryAllocations || [])
+    .filter((row: Row) => Number(row.outbound_order_id) === Number(id) && row.allocation_status === 'SHIPPED')
+  if (!shippedAllocations.length || remaining <= 0) throw new Error('没有可取消的发货分配数据')
+  shippedAllocations.forEach((allocation: Row) => {
+    if (remaining <= 0) return
+    const allocationQty = Number(allocation.allocated_qty || 1)
+    const cancelQty = Math.min(allocationQty, remaining)
+    remaining -= cancelQty
+    if (cancelQty < allocationQty) {
+      allocation.allocated_qty = allocationQty - cancelQty
+      const picked = { ...allocation, id: Date.now() + Math.random(), allocation_no: `${allocation.allocation_no || 'ALLOC'}-CANCEL-SHIP-${Date.now()}`, allocated_qty: cancelQty, allocation_status: 'PICKED' }
+      store.inventoryAllocations.unshift(picked)
+      rollbackShipmentInventory(store, order, picked)
+    } else {
+      allocation.allocation_status = 'PICKED'
+      rollbackShipmentInventory(store, order, allocation)
+    }
+  })
+  if (remaining > 0) throw new Error('可取消发货数量不足')
+  shipment.shipment_status = 'CANCELED'
+  shipment.status = 'CANCELED'
+  shipment.cancel_reason = body.reason || '取消发货'
+  refreshMockTaskRows(store, id)
+  refreshMockOrderQty(store, id)
+  addOutboundOperationLog(store, order.order_no, 'CANCEL_SHIPMENT', body.operator || 'logistics', 'SUCCESS', `${shipment.shipment_no} ${body.reason || '取消发货'}`)
+  saveStore(store)
+  return mockOutboundDetail(store, id)
+}
+
+function rollbackShipmentInventory(store: any, order: Row, allocation: Row) {
+  const qty = Number(allocation.allocated_qty || 1)
+  const inv = (store.inventory || []).find((row: Row) => Number(row.id) === Number(allocation.inventory_id))
+  if (inv) {
+    inv.total_qty = Number(inv.total_qty || 0) + qty
+    inv.allocated_qty = Number(inv.allocated_qty || 0) + qty
+  }
+  if (allocation.sn_code) {
+    const sn = (store.serialNumbers || []).find((row: Row) => row.sn_code === allocation.sn_code)
+    if (sn) Object.assign(sn, { status: 'PICKED', locked_flag: 1, locked_order_no: order.order_no, outbound_order_no: order.order_no, sold_flag: 0, market_flag: 0 })
+  }
+}
+
+function mockCloseOrder(store: any, id: number, body: Row) {
+  const order = mockOutboundOrder(store, id)
+  refreshMockOrderQty(store, id)
+  if (Number(order.shipped_qty || 0) <= 0) throw new Error('没有发运记录的订单不允许关闭')
+  const lines = (store.outboundOrderLines || []).filter((line: Row) => Number(line.order_id) === id)
+  if (Number(order.shipped_qty || 0) < Number(order.planned_qty || 0)) {
+    const blockingLines = lines.filter((line: Row) => {
+      const planned = Number(line.planned_qty || line.order_qty || 0)
+      const shipped = Number(line.shipped_qty || 0)
+      if (shipped >= planned) return false
+      return Number(line.allocated_qty || 0) > shipped || Number(line.picked_qty || 0) > shipped || ['PARTIAL_ALLOCATED', 'ALLOCATED', 'PARTIAL_PICKED', 'PICKED'].includes(line.line_status || line.status)
+    })
+    if (blockingLines.length) {
+      throw new Error('存在已分配/已拣货的数据，不允许直接关单。请先释放分配或回退拣货，使未发运明细回到创建状态后再关单。')
+    }
+    const splitNo = `${order.order_no}-S01`
+    if (!store.outboundOrders.some((row: Row) => row.order_no === splitNo)) {
+      const splitOrder = {
+        ...order,
+        id: Date.now(),
+        order_no: splitNo,
+        shipment_order_no: splitNo,
+        parent_order_no: order.order_no,
+        split_flag: 1,
+        planned_qty: 0,
+        allocated_qty: 0,
+        picked_qty: 0,
+        shipped_qty: 0,
+        status: 'CREATED',
+        sap_post_status: 'NOT_POSTED',
+        sap_post_result: '',
+        logistics_company: '',
+        carrier_name: '',
+        tracking_no: '',
+        created_at: now()
+      }
+      store.outboundOrders.unshift(splitOrder)
+      lines.forEach((line: Row) => {
+        const remain = Number(line.planned_qty || line.order_qty || 0) - Number(line.shipped_qty || 0)
+        if (remain <= 0) return
+        store.outboundOrderLines.unshift({
+          ...line,
+          id: Date.now() + Math.random(),
+          order_id: splitOrder.id,
+          order_no: splitNo,
+          planned_qty: remain,
+          order_qty: remain,
+          allocated_qty: 0,
+          picked_qty: 0,
+          review_qty: 0,
+          shipped_qty: 0,
+          status: 'CREATED',
+          line_status: 'CREATED'
+        })
+      })
+      syncOutboundHeaderQty(store.outboundOrders, store.outboundOrderLines)
+    }
+  }
+  order.status = 'CLOSED'
+  lines.forEach((line: Row) => {
+    line.status = 'CLOSED'
+    line.line_status = 'CLOSED'
+  })
+  addOutboundOperationLog(store, order.order_no, 'CLOSE', body.operator || 'manager', 'SUCCESS', '关闭发运订单')
+  saveStore(store)
+  return mockOutboundDetail(store, id)
+}
+
 function refreshMockTask(store: any, taskId: number) {
   const task = store.pickingTasks.find((row: Row) => Number(row.id) === taskId)
   if (!task) return
-  task.picked_qty = store.pickingRecords.filter((row: Row) => row.task_id === taskId).length
+  task.picked_qty = store.pickingRecords
+    .filter((row: Row) => row.task_id === taskId && row.result !== 'CANCELED')
+    .reduce((total: number, row: Row) => total + Number(row.picked_qty || 1), 0)
   task.status = Number(task.picked_qty) >= Number(task.plan_qty) ? 'PICKED' : 'PICKING'
 }
 
 function refreshMockOrderQty(store: any, orderId: number) {
   const order = mockOutboundOrder(store, orderId)
-  const allocations = store.inventoryAllocations.filter((row: Row) => row.outbound_order_id === orderId)
-  order.allocated_qty = allocations.filter((row: Row) => ['ALLOCATED', 'PICKED', 'REVIEWED', 'SHIPPED'].includes(row.allocation_status)).length
-  order.picked_qty = allocations.filter((row: Row) => ['PICKED', 'REVIEWED', 'SHIPPED'].includes(row.allocation_status)).length
-  order.review_qty = allocations.filter((row: Row) => ['REVIEWED', 'SHIPPED'].includes(row.allocation_status)).length
-  order.shipped_qty = allocations.filter((row: Row) => row.allocation_status === 'SHIPPED').length || order.shipped_qty
-  const firstLine = store.outboundOrderLines.find((line: Row) => Number(line.order_id) === Number(orderId) && Number(line.line_no) === 1)
-  if (firstLine) {
-    firstLine.allocated_qty = order.allocated_qty
-    firstLine.picked_qty = order.picked_qty
-    firstLine.review_qty = order.review_qty
-    firstLine.shipped_qty = order.shipped_qty
-    firstLine.status = order.status
-  }
+  const lines = (store.outboundOrderLines || []).filter((line: Row) => Number(line.order_id) === Number(orderId))
+  lines.forEach((line: Row) => {
+    const allocations = store.inventoryAllocations.filter((row: Row) => row.outbound_order_id === orderId && Number(row.outbound_detail_id || row.line_id || line.id) === Number(line.id))
+    line.allocated_qty = allocations.filter((row: Row) => ['ALLOCATED', 'PICKED', 'REVIEWED', 'SHIPPED'].includes(row.allocation_status)).reduce((total: number, row: Row) => total + Number(row.allocated_qty || 1), 0)
+    line.picked_qty = allocations.filter((row: Row) => ['PICKED', 'REVIEWED', 'SHIPPED'].includes(row.allocation_status)).reduce((total: number, row: Row) => total + Number(row.allocated_qty || 1), 0)
+    line.review_qty = allocations.filter((row: Row) => ['REVIEWED', 'SHIPPED'].includes(row.allocation_status)).reduce((total: number, row: Row) => total + Number(row.allocated_qty || 1), 0)
+    const shippedFromAllocations = allocations.filter((row: Row) => row.allocation_status === 'SHIPPED').reduce((total: number, row: Row) => total + Number(row.allocated_qty || 1), 0)
+    line.shipped_qty = allocations.length ? shippedFromAllocations : Number(line.shipped_qty || 0)
+    const planned = Number(line.planned_qty || line.order_qty || 0)
+    line.status = line.shipped_qty >= planned ? 'SHIPPED'
+      : line.shipped_qty > 0 ? 'PARTIAL_SHIPPED'
+        : line.picked_qty >= planned ? 'PICKED'
+          : line.picked_qty > 0 ? 'PARTIAL_PICKED'
+            : line.allocated_qty >= planned ? 'ALLOCATED'
+              : line.allocated_qty > 0 ? 'PARTIAL_ALLOCATED'
+                : line.status || 'CREATED'
+    line.line_status = line.status
+  })
+  order.planned_qty = lines.reduce((total: number, line: Row) => total + Number(line.planned_qty || line.order_qty || 0), 0)
+  order.allocated_qty = lines.reduce((total: number, line: Row) => total + Number(line.allocated_qty || 0), 0)
+  order.picked_qty = lines.reduce((total: number, line: Row) => total + Number(line.picked_qty || 0), 0)
+  order.review_qty = lines.reduce((total: number, line: Row) => total + Number(line.review_qty || 0), 0)
+  order.shipped_qty = lines.reduce((total: number, line: Row) => total + Number(line.shipped_qty || 0), 0)
 }
 
 function addOutboundOperationLog(store: any, businessDocNo: string, action: string, operator: string, result: string, message: string) {
@@ -3079,6 +4376,8 @@ function mockConfirmSnCollection(store: any, orderId: number, lineId: number, bo
       product_code: line.product_code,
       product_name: line.product_name,
       product_id: line.product_id || productIdByCode(store, line.product_code),
+      owner_code: order.owner_code || line.owner_code || '',
+      owner_name: order.owner_name || '',
       mes_work_order_no: existing?.mes_work_order_no || order.mes_work_order_no || '',
       warehouse_code: order.warehouse_code,
       warehouse_name: order.warehouse_name,
@@ -3106,6 +4405,8 @@ function mockConfirmSnCollection(store: any, orderId: number, lineId: number, bo
       product_code: line.product_code,
       product_name: line.product_name,
       product_id: line.product_id || productIdByCode(store, line.product_code),
+      owner_code: order.owner_code || line.owner_code || '',
+      owner_name: order.owner_name || '',
       inbound_order_no: order.order_no,
       inbound_order_line_id: line.id,
       bind_order_no: order.order_no,
@@ -3418,7 +4719,7 @@ function nextReceiptNo(store: any) {
 
 function updateInboundSapSummary(store: any, orderId: number) {
   const order = requireMockOrder(store, orderId)
-  const receipts = (store.inboundReceipts || []).filter((receipt: Row) => Number(receipt.inbound_order_id) === Number(orderId))
+  const receipts = (store.inboundReceipts || []).filter((receipt: Row) => Number(receipt.inbound_order_id) === Number(orderId) && receipt.status !== 'CANCELED')
   if (!receipts.length) {
     order.sap_post_status = 'NOT_POSTED'
     order.sap_post_result = ''
@@ -3521,6 +4822,63 @@ function mockCancelSnCollection(store: any, orderId: number, lineId: number, bod
   return productionDetail(store, orderId)
 }
 
+function mockCancelInboundOrder(store: any, orderId: number, body: Row) {
+  const order = requireMockOrder(store, orderId)
+  if (order.status !== 'CREATED') throw new Error('只有创建状态的预期到货通知单允许取消')
+  const hasCollectedSn = (store.serialNumbers || []).some((row: Row) =>
+    row.inbound_order_no === order.order_no && ['COLLECTED', 'RECEIVED', 'ON_SHELF'].includes(row.status)
+  )
+  if (hasCollectedSn) throw new Error('当前入库单已采集 SN，不允许直接取消，请先取消 SN 采集')
+  const hasReceipt = (store.inboundReceipts || []).some((row: Row) => Number(row.inbound_order_id) === Number(orderId) && row.status !== 'CANCELED')
+  if (hasReceipt) throw new Error('当前入库单已收货，不允许直接取消')
+  order.status = 'CANCELED'
+  ;(store.inboundOrderLines || []).filter((line: Row) => Number(line.order_id) === Number(orderId)).forEach((line: Row) => {
+    line.status = 'CANCELED'
+  })
+  addOperationLog(store, order.order_no, 'CANCEL_INBOUND_ORDER', body.operator || 'planner', 'SUCCESS', body.reason || '业务取消入库单')
+  saveStore(store)
+  return productionDetail(store, orderId)
+}
+
+function mockCancelInboundReceipt(store: any, orderId: number, receiptId: number, body: Row) {
+  const order = requireMockOrder(store, orderId)
+  const receipt = (store.inboundReceipts || []).find((row: Row) => Number(row.id) === Number(receiptId) && Number(row.inbound_order_id) === Number(orderId))
+  if (!receipt) throw new Error('收货批次不存在')
+  if (receipt.status === 'CANCELED') throw new Error('该收货批次已取消')
+  if (['SUCCESS', 'POSTED'].includes(receipt.sap_post_status)) throw new Error('当前收货批次已回传 SAP 成功，不允许直接取消收货，请走 SAP 冲销流程。')
+  if (['CLOSED', 'CANCELED'].includes(order.status)) throw new Error('已关闭或已取消订单不允许取消收货')
+  const receiptLines = (store.inboundReceiptLines || []).filter((line: Row) => Number(line.receipt_id) === Number(receiptId))
+  const receiptSns = (store.inboundReceiptSns || []).filter((sn: Row) => Number(sn.receipt_id) === Number(receiptId))
+  const snCodes = receiptSns.map((sn: Row) => sn.sn_code)
+  const shelvedSn = (store.serialNumbers || []).find((sn: Row) => snCodes.includes(sn.sn_code) && sn.status === 'ON_SHELF')
+  if (shelvedSn) throw new Error(`SN 已上架，不允许直接取消收货: ${shelvedSn.sn_code}`)
+  receiptLines.forEach((receiptLine: Row) => {
+    const line = (store.inboundOrderLines || []).find((item: Row) => Number(item.id) === Number(receiptLine.inbound_order_line_id))
+    if (!line) return
+    line.received_qty = Math.max(Number(line.received_qty || 0) - Number(receiptLine.receive_qty || 0), 0)
+    refreshInboundLineStatus(line)
+    receiptLine.status = 'CANCELED'
+    receiptLine.sap_post_status = 'CANCELED'
+    receiptLine.sap_post_result = body.reason || '取消收货'
+  })
+  receiptSns.forEach((receiptSn: Row) => {
+    const sn = (store.serialNumbers || []).find((row: Row) => row.sn_code === receiptSn.sn_code)
+    if (sn && sn.status === 'RECEIVED') {
+      sn.status = 'COLLECTED'
+      sn.location_code = ''
+    }
+    receiptSn.status = 'CANCELED'
+  })
+  receipt.status = 'CANCELED'
+  receipt.sap_post_status = 'CANCELED'
+  receipt.sap_post_result = body.reason || '取消收货'
+  refreshInboundHeaderStatus(store, orderId)
+  updateInboundSapSummary(store, orderId)
+  addOperationLog(store, order.order_no, 'CANCEL_RECEIPT', body.operator || 'wh_admin', 'SUCCESS', `${receipt.receipt_no} ${body.reason || '取消收货'}`)
+  saveStore(store)
+  return productionDetail(store, orderId)
+}
+
 function mockRetrySap(store: any, orderIds: number[]) {
   let successCount = 0
   let failedCount = 0
@@ -3590,6 +4948,7 @@ function validationMessage(inputQty: number, validQty: number, invalidQty: numbe
 
 function refreshInboundHeaderStatus(store: any, orderId: number) {
   const order = requireMockOrder(store, orderId)
+  const terminalStatus = ['CANCELED', 'CLOSED'].includes(order.status)
   const lines = store.inboundOrderLines.filter((line: Row) => Number(line.order_id) === Number(orderId))
   lines.forEach((line: Row) => refreshInboundLineStatus(line))
   order.planned_qty = sum(lines, 'planned_qty')
@@ -3597,7 +4956,7 @@ function refreshInboundHeaderStatus(store: any, orderId: number) {
   order.shelved_qty = sum(lines, 'shelved_qty')
   const completed = lines.length > 0 && lines.every((line: Row) => Number(line.received_qty || 0) >= Number(line.planned_qty || 0))
   const allShelved = lines.length > 0 && sum(lines, 'shelved_qty') >= sum(lines, 'planned_qty')
-  order.status = allShelved ? 'ON_SHELF' : Number(order.received_qty || 0) === 0 ? 'CREATED' : completed ? 'RECEIVED' : 'PARTIAL_RECEIVED'
+  if (!terminalStatus) order.status = allShelved ? 'ON_SHELF' : Number(order.received_qty || 0) === 0 ? 'CREATED' : completed ? 'RECEIVED' : 'PARTIAL_RECEIVED'
   order.updated_at = now()
 }
 

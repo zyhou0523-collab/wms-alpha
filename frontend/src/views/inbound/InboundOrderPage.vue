@@ -104,7 +104,7 @@
                   <el-tag :type="statusType(line.line_status || line.status)" size="small">{{ statusLabel(line.line_status || line.status) }}</el-tag>
                 </template>
               </el-table-column>
-              <el-table-column label="操作" width="150">
+              <el-table-column label="操作" min-width="140">
                 <template #default="{ row: line }">
                   <el-button v-if="isLineSnRequired(line)" link type="success" :disabled="!canLineCollectSn(row, line)" @click="openLineSnCollect(row, line)">采集 SN</el-button>
                   <el-button v-if="canLineReceive(row, line)" link type="primary" @click="openLineReceive(row, line)">收货</el-button>
@@ -150,12 +150,13 @@
       <el-table-column prop="created_by" label="创建人" width="100" />
       <el-table-column prop="updated_at" label="更新时间" width="170" show-overflow-tooltip />
       <el-table-column prop="updated_by" label="更新人" width="100" />
-      <el-table-column label="操作" fixed="right" width="310">
+      <el-table-column label="操作" fixed="right" width="360">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row)">查看</el-button>
           <el-button v-if="canCollectSn(row)" link type="success" @click="openSnCollect(row)">采集 SN</el-button>
           <el-button v-if="canReceive(row)" link type="primary" @click="openReceive(row)">收货</el-button>
           <el-button v-if="canSapPost(row)" link type="warning" @click="submitSapPost(row)">SAP 回传</el-button>
+          <el-button v-if="canCancelInbound(row)" link type="danger" @click="cancelInboundOrder(row)">取消</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -338,6 +339,20 @@ async function submitSapPost(row: Row) {
   await load()
 }
 
+async function cancelInboundOrder(row: Row) {
+  await ElMessageBox.confirm(
+    `确认取消预期到货通知单 ${row.order_no}？取消后该单据进入终态。`,
+    '取消预期到货通知单',
+    { type: 'warning', confirmButtonText: '确认取消', cancelButtonText: '返回' }
+  )
+  await inboundService.cancel(Number(row.id), {
+    operator: 'wh_admin',
+    reason: '页面取消预期到货通知单'
+  })
+  ElMessage.success('预期到货通知单已取消')
+  await load()
+}
+
 function handleSelectionChange(selection: Row[]) {
   selectedRows.value = selection
 }
@@ -438,6 +453,14 @@ function canRetrySap(row: Row) {
   return canSapPost(row) || ['FAILED', 'NOT_POSTED'].includes(row.sap_post_status)
 }
 
+function canCancelInbound(row: Row) {
+  return row.status === 'CREATED'
+    && Number(row.collected_qty || 0) === 0
+    && Number(row.pending_receive_qty || 0) === 0
+    && Number(row.received_qty || 0) === 0
+    && !['SUCCESS', 'POSTED'].includes(row.sap_post_status)
+}
+
 function inboundTypeLabel(value: string) {
   return inboundTypeOptions.find((item) => item.value === value)?.label || value || '-'
 }
@@ -511,8 +534,9 @@ function sapStatusType(value: string) {
 }
 
 .inbound-line-subtable {
-  width: 100%;
-  max-width: 1180px;
+  width: max-content;
+  min-width: 1180px;
+  max-width: none;
 }
 
 .inbound-line-subtable :deep(.el-table__cell) {

@@ -8,6 +8,7 @@
         </div>
         <div class="header-actions">
           <el-button @click="router.back()">返回</el-button>
+          <el-button v-if="canCancelOrder()" type="danger" plain @click="cancelOrder()">取消单据</el-button>
           <el-button v-if="canReceiveOrder()" type="success" @click="openReceive()">收货</el-button>
           <el-button type="primary" @click="load">刷新</el-button>
         </div>
@@ -141,6 +142,13 @@
             </el-table-column>
             <el-table-column prop="sap_material_doc_no" label="SAP 凭证号" width="150" show-overflow-tooltip />
             <el-table-column prop="sap_post_result" label="回传结果" min-width="220" show-overflow-tooltip />
+            <el-table-column label="操作" width="120">
+              <template #default="{ row }">
+                <el-button v-if="canCancelReceipt(row)" link type="danger" @click="cancelReceipt(row)">
+                  取消收货
+                </el-button>
+              </template>
+            </el-table-column>
           </el-table>
         </el-tab-pane>
         <el-tab-pane label="操作记录">
@@ -185,7 +193,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
-import { ElMessage } from 'element-plus'
+import { ElMessage, ElMessageBox } from 'element-plus'
 import { inboundService } from '../../api/services'
 import SnCollectDialog from './components/SnCollectDialog.vue'
 import ReceiveConfirmDialog from './components/ReceiveConfirmDialog.vue'
@@ -280,6 +288,53 @@ async function cancelCollectedSn(row: Row) {
   })
   ElMessage.success('已取消未收货 SN 采集，可重新采集')
   await load()
+}
+
+async function cancelOrder() {
+  await ElMessageBox.confirm(
+    `确认取消预期到货通知单 ${detail.value.order?.order_no}？`,
+    '取消预期到货通知单',
+    { type: 'warning', confirmButtonText: '确认取消', cancelButtonText: '返回' }
+  )
+  await inboundService.cancel(Number(route.params.id), {
+    operator: 'wh_admin',
+    reason: '详情页取消预期到货通知单'
+  })
+  ElMessage.success('预期到货通知单已取消')
+  await load()
+}
+
+async function cancelReceipt(row: Row) {
+  await ElMessageBox.confirm(
+    `确认取消收货批次 ${row.receipt_no}？已回传 SAP 成功的批次不允许直接取消。`,
+    '取消收货',
+    { type: 'warning', confirmButtonText: '确认取消', cancelButtonText: '返回' }
+  )
+  await inboundService.cancelReceipt(Number(route.params.id), Number(row.receipt_id || row.id), {
+    operator: 'wh_admin',
+    reason: '详情页取消收货批次'
+  })
+  ElMessage.success('收货批次已取消')
+  await load()
+}
+
+function canCancelOrder() {
+  const order = detail.value.order || {}
+  const hasCollectedSn = (detail.value.serialNumbers || []).some((row: Row) =>
+    ['COLLECTED', 'RECEIVED', 'ON_SHELF'].includes(row.status)
+  )
+  const hasReceipt = (detail.value.receiptRecords || []).some((row: Row) => row.status !== 'CANCELED')
+  return order.status === 'CREATED'
+    && !hasCollectedSn
+    && !hasReceipt
+    && Number(order.received_qty || 0) === 0
+    && !['SUCCESS', 'POSTED'].includes(order.sap_post_status)
+}
+
+function canCancelReceipt(row: Row) {
+  return !['CANCELED'].includes(row.status)
+    && !['SUCCESS', 'POSTED'].includes(row.sap_post_status)
+    && Number(row.receive_qty || 0) > 0
 }
 
 function inboundTypeLabel(value: string) {

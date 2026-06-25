@@ -8,7 +8,16 @@ WMS Alpha 是面向制造业新能源成品仓储场景的 WMS 原型系统，�
 
 ## 当前版本
 
-v0.5.0-alpha
+WMS PC V1.5
+
+## V1.5 发布信息
+
+- 版本号：V1.5
+- 版本类型：PC 端阶段版本
+- Git 仓库：https://github.com/zyhou0523-collab/wms-alpha.git
+- 发布分支：release/wms-pc-v1.5
+- 发布 Tag：WMS_PC_V1.5
+- 本版本重点：发货管理模块、数据驾驶舱看板、数据报表
 
 ## 已完成功能
 

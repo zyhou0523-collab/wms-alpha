@@ -77,6 +77,15 @@ public class AuthController {
             child("inventoryList", "库存查询", "/inventory/list"),
             child("snList", "SN 查询", "/inventory/sn")
         ),
+        menu("reports", "报表中心", "DataAnalysis", null,
+            child("inoutStockReport", "进出存报表", "/reports/inout-stock"),
+            child("inboundDailyReport", "入库日报表", "/reports/inbound-daily"),
+            child("outboundDailyReport", "出库日报表", "/reports/outbound-daily"),
+            child("standardAgingReport", "标准库龄报表", "/reports/standard-aging"),
+            child("segmentAgingReport", "分段库龄报表", "/reports/segment-aging"),
+            child("outboundSnReport", "出库 SN 报表", "/reports/outbound-sn"),
+            child("inboundSnReport", "入库 SN 报表", "/reports/inbound-sn")
+        ),
         menu("interface", "接口中心", "Connection", null,
             child("interfaceLogs", "接口日志", "/interface/logs")
         ),

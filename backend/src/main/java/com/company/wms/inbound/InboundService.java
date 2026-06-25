@@ -171,7 +171,7 @@ public class InboundService {
         ORDER BY id DESC
         """, params("orderNo", orderNo)));
     data.put("receiptRecords", repo.query("""
-        SELECT r.receipt_no, r.receipt_time, r.receipt_user, r.status,
+        SELECT r.id AS receipt_id, r.receipt_no, r.receipt_time, r.receipt_user, r.status,
                r.sap_post_status, r.sap_material_doc_no, r.sap_post_result,
                rl.line_no, rl.product_id, rl.product_code, rl.receive_qty,
                rl.sap_post_qty, rl.sap_post_status AS line_sap_post_status,
@@ -480,15 +480,17 @@ public class InboundService {
       if (existing == null) {
         jdbc.update("""
             INSERT INTO wms_serial_number (
-              sn_code, product_id, warehouse_id, location_id, pallet_code, box_code, status,
+              sn_code, product_id, owner_code, owner_name, warehouse_id, location_id, pallet_code, box_code, status,
               quality_status, locked_flag, inbound_order_no, inbound_order_line_id
             ) VALUES (
-              :sn, :productId, :warehouseId, NULL, :palletCode, :boxCode, 'COLLECTED',
+              :sn, :productId, :ownerCode, :ownerName, :warehouseId, NULL, :palletCode, :boxCode, 'COLLECTED',
               'QUALIFIED', 0, :orderNo, :lineId
             )
             """, params(
             "sn", sn,
             "productId", productId,
+            "ownerCode", line.get("owner_code"),
+            "ownerName", line.get("owner_name"),
             "warehouseId", line.get("warehouse_id"),
             "palletCode", palletCode,
             "boxCode", boxCode,
@@ -499,6 +501,8 @@ public class InboundService {
         jdbc.update("""
             UPDATE wms_serial_number
             SET product_id = :productId,
+                owner_code = :ownerCode,
+                owner_name = :ownerName,
                 warehouse_id = :warehouseId,
                 location_id = NULL,
                 pallet_code = :palletCode,
@@ -513,6 +517,8 @@ public class InboundService {
             """, params(
             "sn", sn,
             "productId", productId,
+            "ownerCode", line.get("owner_code"),
+            "ownerName", line.get("owner_name"),
             "warehouseId", line.get("warehouse_id"),
             "palletCode", palletCode,
             "boxCode", boxCode,
@@ -856,6 +862,122 @@ public class InboundService {
     Map<String, Object> result = detail(id);
     result.put("receiptNo", receiptNo);
     return result;
+  }
+
+  @Transactional
+  public Map<String, Object> cancel(long id, Map<String, Object> body) {
+    Map<String, Object> order = requireOrder(id);
+    String orderNo = String.valueOf(order.get("order_no"));
+    if (!"CREATED".equals(String.valueOf(order.get("status")))) {
+      failOperation(orderNo, "CANCEL_INBOUND_ORDER", cell(body, "operator"), "只有创建状态的预期到货通知单允许取消");
+    }
+    if (List.of("SUCCESS", "POSTED").contains(String.valueOf(order.get("sap_post_status")))) {
+      failOperation(orderNo, "CANCEL_INBOUND_ORDER", cell(body, "operator"), "已回传 SAP 的入库单不允许直接取消");
+    }
+    int snCount = repo.number("""
+        SELECT COUNT(*)
+        FROM wms_serial_number
+        WHERE inbound_order_no = :orderNo
+          AND status IN ('COLLECTED', 'RECEIVED', 'ON_SHELF')
+        """, params("orderNo", orderNo)).intValue();
+    int receiptCount = repo.number("""
+        SELECT COUNT(*)
+        FROM wms_inbound_receipt
+        WHERE inbound_order_id = :id
+          AND status <> 'CANCELED'
+        """, params("id", id)).intValue();
+    if (snCount > 0 || receiptCount > 0 || intValue(order.get("received_qty"), 0) > 0) {
+      failOperation(orderNo, "CANCEL_INBOUND_ORDER", cell(body, "operator"), "当前单据已采集 SN 或已收货，不允许直接取消");
+    }
+    jdbc.update("UPDATE wms_inbound_order SET status = 'CANCELED' WHERE id = :id", params("id", id));
+    jdbc.update("UPDATE wms_inbound_order_detail SET status = 'CANCELED' WHERE order_id = :id", params("id", id));
+    repo.operationLog("INBOUND", orderNo, "CANCEL_INBOUND_ORDER", operator(cell(body, "operator")), "SUCCESS",
+        firstText(cell(body, "reason"), "取消预期到货通知单"));
+    return detail(id);
+  }
+
+  @Transactional
+  public Map<String, Object> cancelReceipt(long id, long receiptId, Map<String, Object> body) {
+    Map<String, Object> order = requireOrder(id);
+    String orderNo = String.valueOf(order.get("order_no"));
+    Map<String, Object> receipt = repo.one("""
+        SELECT *
+        FROM wms_inbound_receipt
+        WHERE id = :receiptId AND inbound_order_id = :orderId
+        """, params("receiptId", receiptId, "orderId", id));
+    if (receipt == null) {
+      failOperation(orderNo, "CANCEL_RECEIPT", cell(body, "operator"), "收货批次不存在");
+    }
+    if ("CANCELED".equals(String.valueOf(receipt.get("status")))) {
+      failOperation(orderNo, "CANCEL_RECEIPT", cell(body, "operator"), "收货批次已取消，请勿重复操作");
+    }
+    if (List.of("SUCCESS", "POSTED").contains(String.valueOf(receipt.get("sap_post_status")))) {
+      failOperation(orderNo, "CANCEL_RECEIPT", cell(body, "operator"), "当前收货批次已回传 SAP 成功，不允许直接取消收货，请走 SAP 冲销流程。");
+    }
+    int putawayCount = repo.number("""
+        SELECT COUNT(*)
+        FROM wms_inbound_receipt_sn rs
+        JOIN wms_serial_number sn ON sn.sn_code = rs.sn_code
+        WHERE rs.receipt_id = :receiptId
+          AND sn.status = 'ON_SHELF'
+        """, params("receiptId", receiptId)).intValue();
+    if (putawayCount > 0) {
+      failOperation(orderNo, "CANCEL_RECEIPT", cell(body, "operator"), "当前收货批次已有 SN 上架，不允许直接取消收货");
+    }
+
+    List<Map<String, Object>> lines = repo.query("""
+        SELECT *
+        FROM wms_inbound_receipt_line
+        WHERE receipt_id = :receiptId
+        """, params("receiptId", receiptId));
+    for (Map<String, Object> line : lines) {
+      int qty = intValue(line.get("receive_qty"), 0);
+      jdbc.update("""
+          UPDATE wms_inbound_order_detail
+          SET received_qty = GREATEST(received_qty - :qty, 0),
+              status = CASE
+                WHEN GREATEST(received_qty - :qty, 0) = 0 THEN 'CREATED'
+                WHEN GREATEST(received_qty - :qty, 0) >= planned_qty THEN 'RECEIVED'
+                ELSE 'PARTIAL_RECEIVED'
+              END
+          WHERE id = :lineId
+          """, params("qty", qty, "lineId", line.get("inbound_order_line_id")));
+    }
+    List<String> serials = repo.query("""
+        SELECT sn_code
+        FROM wms_inbound_receipt_sn
+        WHERE receipt_id = :receiptId
+        ORDER BY sn_code
+        """, params("receiptId", receiptId)).stream()
+        .map(row -> String.valueOf(row.get("sn_code")))
+        .toList();
+    if (!serials.isEmpty()) {
+      jdbc.update("""
+          UPDATE wms_serial_number
+          SET status = 'COLLECTED',
+              location_id = NULL
+          WHERE sn_code IN (:serials)
+            AND status = 'RECEIVED'
+          """, params("serials", serials));
+    }
+    jdbc.update("""
+        UPDATE wms_inbound_receipt_line
+        SET sap_post_status = 'CANCELED',
+            sap_post_result = :reason
+        WHERE receipt_id = :receiptId
+        """, params("receiptId", receiptId, "reason", firstText(cell(body, "reason"), "取消收货")));
+    jdbc.update("""
+        UPDATE wms_inbound_receipt
+        SET status = 'CANCELED',
+            sap_post_status = 'CANCELED',
+            sap_post_result = :reason
+        WHERE id = :receiptId
+        """, params("receiptId", receiptId, "reason", firstText(cell(body, "reason"), "取消收货")));
+    refreshInboundHeaderStatus(id);
+    updateInboundSapSummary(id);
+    repo.operationLog("INBOUND", orderNo, "CANCEL_RECEIPT", operator(cell(body, "operator")), "SUCCESS",
+        "取消收货批次 " + receipt.get("receipt_no"));
+    return detail(id);
   }
 
   @Transactional
@@ -1420,6 +1542,7 @@ public class InboundService {
                d.batch_no, d.quality_status, d.status,
                o.order_no, o.inbound_type, o.source_system, o.source_order_no,
                o.mes_work_order_no, o.warehouse_id, o.status AS order_status,
+               o.owner_code, o.owner_name,
                w.warehouse_code, w.warehouse_name,
                p.product_code, p.product_name, p.unit, p.sn_managed
         FROM wms_inbound_order_detail d
@@ -1504,6 +1627,10 @@ public class InboundService {
   }
 
   private void refreshInboundHeaderStatus(long orderId) {
+    Map<String, Object> current = repo.one("SELECT status FROM wms_inbound_order WHERE id = :orderId", params("orderId", orderId));
+    if (current != null && List.of("CANCELED", "CLOSED").contains(String.valueOf(current.get("status")))) {
+      return;
+    }
     Map<String, Object> agg = repo.one("""
         SELECT COUNT(*) AS line_count,
                COALESCE(SUM(planned_qty), 0) AS planned_qty,
@@ -1643,11 +1770,13 @@ public class InboundService {
           SUM(CASE WHEN sap_post_status IN ('NOT_POSTED', 'FAILED') THEN 1 ELSE 0 END) AS pending_count
         FROM wms_inbound_receipt
         WHERE inbound_order_id = :orderId
+          AND status <> 'CANCELED'
         """, params("orderId", orderId));
     Map<String, Object> latest = repo.one("""
         SELECT sap_post_status, sap_material_doc_no, sap_post_result
         FROM wms_inbound_receipt
         WHERE inbound_order_id = :orderId
+          AND status <> 'CANCELED'
         ORDER BY id DESC
         LIMIT 1
         """, params("orderId", orderId));
@@ -1701,10 +1830,10 @@ public class InboundService {
     if (existing == null) {
       jdbc.update("""
           INSERT INTO wms_inventory (
-            warehouse_id, area_id, location_id, product_id, batch_no, inventory_status,
+            warehouse_id, area_id, location_id, product_id, owner_code, owner_name, batch_no, inventory_status,
             total_qty, available_qty, allocated_qty, frozen_qty, unqualified_qty, inbound_date, vmi_flag
           ) VALUES (
-            :warehouseId, :areaId, :locationId, :productId, :batchNo, 'QUALIFIED',
+            :warehouseId, :areaId, :locationId, :productId, :ownerCode, :ownerName, :batchNo, 'QUALIFIED',
             :qty, :qty, 0, 0, 0, CURDATE(), 0
           )
           """, params(
@@ -1712,6 +1841,8 @@ public class InboundService {
           "areaId", location.get("target_area_id"),
           "locationId", location.get("id"),
           "productId", order.get("product_id"),
+          "ownerCode", order.get("owner_code"),
+          "ownerName", order.get("owner_name"),
           "batchNo", "BATCH-" + LocalDate.now(),
           "qty", qty
       ));
@@ -1720,9 +1851,11 @@ public class InboundService {
     jdbc.update("""
         UPDATE wms_inventory
         SET total_qty = total_qty + :qty,
-            available_qty = available_qty + :qty
+            available_qty = available_qty + :qty,
+            owner_code = COALESCE(owner_code, :ownerCode),
+            owner_name = COALESCE(owner_name, :ownerName)
         WHERE id = :id
-        """, params("id", existing.get("id"), "qty", qty));
+        """, params("id", existing.get("id"), "qty", qty, "ownerCode", order.get("owner_code"), "ownerName", order.get("owner_name")));
   }
 
   private void failOperation(String orderNo, String action, String operator, String message) {
