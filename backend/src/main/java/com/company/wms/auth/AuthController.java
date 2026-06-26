@@ -75,7 +75,9 @@ public class AuthController {
         ),
         menu("inventory", "库存管理", "Box", null,
             child("inventoryList", "库存查询", "/inventory/list"),
-            child("snList", "SN 查询", "/inventory/sn")
+            child("snList", "SN 查询", "/inventory/sn"),
+            child("inventoryCount", "库存盘点", "/inventory/count"),
+            child("inventoryMove", "库存移动", "/inventory/move")
         ),
         menu("reports", "报表中心", "DataAnalysis", null,
             child("inoutStockReport", "进出存报表", "/reports/inout-stock"),

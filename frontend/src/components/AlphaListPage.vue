@@ -31,8 +31,8 @@
     </el-form>
 
     <div class="toolbar">
-      <el-button type="primary" @click="openAdd">新增</el-button>
-      <slot name="toolbar" :query="query" :reload="load">
+      <el-button v-if="showCreate !== false" type="primary" @click="openAdd">新增</el-button>
+      <slot name="toolbar" :query="query" :rows="rows" :selected-rows="selectedRows" :reload="load">
         <el-button @click="mockAction('导入')">导入</el-button>
         <el-button @click="mockAction('导出')">导出</el-button>
       </slot>
@@ -55,6 +55,7 @@
       stripe
       :row-class-name="rowClassName"
       style="width: 100%"
+      @selection-change="handleSelectionChange"
     >
       <el-table-column type="selection" width="42" />
       <el-table-column type="index" label="序号" width="64" />
@@ -180,12 +181,14 @@ const props = defineProps<{
   creator?: (data: Record<string, unknown>) => Promise<unknown>
   updater?: (id: number, data: Record<string, unknown>) => Promise<unknown>
   remover?: (id: number) => Promise<unknown>
+  showCreate?: boolean
   highlightInventory?: boolean
   scanEnabled?: boolean
 }>()
 
 const loading = ref(false)
 const rows = ref<Record<string, any>[]>([])
+const selectedRows = ref<Record<string, any>[]>([])
 const total = ref(0)
 const query = reactive<Record<string, any>>({ pageNum: 1, pageSize: 10 })
 const form = reactive<Record<string, any>>({})
@@ -210,6 +213,7 @@ async function load() {
   try {
     const data = await props.fetcher({ ...query })
     rows.value = data.items
+    selectedRows.value = []
     total.value = data.total
   } finally {
     loading.value = false
@@ -227,6 +231,10 @@ function reset() {
   })
   query.pageNum = 1
   load()
+}
+
+function handleSelectionChange(selection: Record<string, any>[]) {
+  selectedRows.value = selection
 }
 
 function openAdd() {

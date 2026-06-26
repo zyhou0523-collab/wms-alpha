@@ -528,3 +528,186 @@ INSERT INTO wms_interface_log (interface_name, source_system, target_system, bus
 INSERT INTO wms_outbound_status_history (outbound_order_id, outbound_order_no, from_status, to_status, action, operator, message, created_at)
 SELECT id, order_no, NULL, status, 'SEED_STATUS', 'system', '婕旂ず鏁版嵁鍒濆鍖?, created_at
 FROM wms_outbound_order;
+
+UPDATE wms_inventory i
+JOIN md_product p ON p.id = i.product_id
+SET i.owner_code = COALESCE(i.owner_code, p.owner_code, '3060'),
+    i.owner_name = COALESCE(i.owner_name, p.owner_name, '杭州利沃得'),
+    i.pallet_code = COALESCE(i.pallet_code, CONCAT('PLT-INV-', LPAD(i.id, 4, '0'))),
+    i.box_code = COALESCE(i.box_code, CONCAT('BOX-INV-', LPAD(i.id, 4, '0')))
+WHERE i.id > 0;
+
+INSERT INTO wms_inventory (
+  warehouse_id, area_id, location_id, product_id, owner_code, owner_name,
+  batch_no, pallet_code, box_code, inventory_status,
+  total_qty, available_qty, allocated_qty, frozen_qty, unqualified_qty, inbound_date, vmi_flag
+)
+SELECT 1, 1, 1, p.id, p.owner_code, p.owner_name,
+       'BATCH-MOVE-NONSN-202606', 'PLT-NONSN-0001', 'BOX-NONSN-0001', 'QUALIFIED',
+       36, 36, 0, 0, 0, DATE_SUB(CURDATE(), INTERVAL 12 DAY), 0
+FROM md_product p
+WHERE p.product_code = 'HXEDE081R10002' AND p.owner_code = '3060'
+LIMIT 1;
+
+INSERT INTO wms_inventory_count_order (
+  count_order_no, count_type, count_scope, status, warehouse_id, owner_code, owner_name,
+  location_code, product_code, product_name, freeze_flag, start_time, end_time, created_by, remark
+) VALUES
+('CNT-202606250001', 'FULL', 'WAREHOUSE', 'CREATED', 1, '3060', '杭州利沃得', NULL, NULL, NULL, 0, NOW(), NULL, 'wh_admin', '全仓盘点演示：创建后可生成盘点快照'),
+('CNT-202606250002', 'CYCLE', 'LOCATION', 'RECORDED', 1, '3060', '杭州利沃得', 'A01-01-01', NULL, NULL, 0, DATE_SUB(NOW(), INTERVAL 2 HOUR), NULL, 'wh_admin', '指定库位盘点演示：已录入差异'),
+('CNT-202606250003', 'RANGE', 'PRODUCT', 'DIFF_CONFIRMED', 1, '3060', '杭州利沃得', NULL, 'HXEDE081R10002', '电表模块', 0, DATE_SUB(NOW(), INTERVAL 4 HOUR), NULL, 'wh_admin', '指定产品盘点演示：差异已确认'),
+('CNT-202606250004', 'DYNAMIC', 'SN', 'ADJUSTED', 1, '3060', '杭州利沃得', 'A01-01-01', 'GT3-10KD1R11004', '三相并网逆变器', 0, DATE_SUB(NOW(), INTERVAL 1 DAY), DATE_SUB(NOW(), INTERVAL 20 HOUR), 'wh_admin', 'SN 盘点差异已调整演示');
+
+INSERT INTO wms_inventory_count_line (
+  count_order_id, line_no, owner_code, owner_name, warehouse_id, area_id, location_id, product_id,
+  sn_required, pallet_code, box_code, sn_code, batch_no, unit, book_qty, actual_qty,
+  diff_qty, diff_type, diff_reason, handling_method, line_status
+)
+SELECT o.id, 10, '3060', '杭州利沃得', 1, 1, 1, p.id,
+       1, 'PLT-OUT-0001', 'BOX-OUT-0001', 'SN-OUT-0001', 'BATCH-OUT-DEMO', 'PCS',
+       1, NULL, NULL, NULL, NULL, NULL, 'NOT_COUNTED'
+FROM wms_inventory_count_order o
+JOIN md_product p ON p.product_code = 'GT3-10KD1R11004' AND p.owner_code = '3060'
+WHERE o.count_order_no = 'CNT-202606250001'
+LIMIT 1;
+
+INSERT INTO wms_inventory_count_line (
+  count_order_id, line_no, owner_code, owner_name, warehouse_id, area_id, location_id, product_id,
+  sn_required, pallet_code, box_code, sn_code, batch_no, unit, book_qty, actual_qty,
+  diff_qty, diff_type, diff_reason, handling_method, line_status
+)
+SELECT o.id, 10, '3060', '杭州利沃得', 1, 1, 1, p.id,
+       1, 'PLT-OUT-0001', 'BOX-OUT-0001', 'SN-OUT-0003', 'BATCH-OUT-DEMO', 'PCS',
+       1, 0, -1, 'SHORTAGE', '库位实物未找到该 SN', 'DECREASE_STOCK', 'DIFFERENCE'
+FROM wms_inventory_count_order o
+JOIN md_product p ON p.product_code = 'GT3-10KD1R11004' AND p.owner_code = '3060'
+WHERE o.count_order_no = 'CNT-202606250002'
+LIMIT 1;
+
+INSERT INTO wms_inventory_count_line (
+  count_order_id, line_no, owner_code, owner_name, warehouse_id, area_id, location_id, product_id,
+  sn_required, pallet_code, box_code, sn_code, batch_no, unit, book_qty, actual_qty,
+  diff_qty, diff_type, diff_reason, handling_method, line_status
+)
+SELECT o.id, 10, '3060', '杭州利沃得', 1, 1, 1, p.id,
+       0, 'PLT-NONSN-0001', 'BOX-NONSN-0001', NULL, 'BATCH-MOVE-NONSN-202606', 'PCS',
+       36, 38, 2, 'OVERAGE', '现场多出 2 PCS', 'INCREASE_STOCK', 'CONFIRMED'
+FROM wms_inventory_count_order o
+JOIN md_product p ON p.product_code = 'HXEDE081R10002' AND p.owner_code = '3060'
+WHERE o.count_order_no = 'CNT-202606250003'
+LIMIT 1;
+
+INSERT INTO wms_inventory_count_line (
+  count_order_id, line_no, owner_code, owner_name, warehouse_id, area_id, location_id, product_id,
+  sn_required, pallet_code, box_code, sn_code, batch_no, unit, book_qty, actual_qty,
+  diff_qty, diff_type, diff_reason, handling_method, line_status
+)
+SELECT o.id, 10, '3060', '杭州利沃得', 1, 1, 1, p.id,
+       1, 'PLT-OUT-0001', 'BOX-OUT-0001', 'SN-OUT-0004', 'BATCH-OUT-DEMO', 'PCS',
+       1, 1, 0, 'NONE', 'SN 已复核一致', 'NO_ACTION', 'ADJUSTED'
+FROM wms_inventory_count_order o
+JOIN md_product p ON p.product_code = 'GT3-10KD1R11004' AND p.owner_code = '3060'
+WHERE o.count_order_no = 'CNT-202606250004'
+LIMIT 1;
+
+INSERT INTO wms_inventory_count_adjustment (
+  count_order_id, count_line_id, adjustment_no, adjustment_type, qty, from_location_id, to_location_id, operator, result, remark, created_at
+)
+SELECT o.id, l.id, 'ADJ-CNT-202606250004-001', 'NO_ACTION', 0, l.location_id, l.location_id, 'wh_admin', 'SUCCESS', 'SN 无差异，无需调整', DATE_SUB(NOW(), INTERVAL 20 HOUR)
+FROM wms_inventory_count_order o
+JOIN wms_inventory_count_line l ON l.count_order_id = o.id
+WHERE o.count_order_no = 'CNT-202606250004';
+
+INSERT INTO wms_inventory_move_order (
+  move_order_no, move_type, status, owner_code, owner_name, warehouse_id,
+  from_area_code, from_location_id, to_area_code, to_location_id,
+  from_pallet_code, to_pallet_code, from_box_code, to_box_code, created_by, confirmed_by, confirmed_at, remark
+) VALUES
+('MOVE-202606250001', 'LOCATION_MOVE', 'CREATED', '3060', '杭州利沃得', 1, 'AREA-GOOD-01', 1, 'AREA-GOOD-01', 13, 'PLT-OUT-0001', 'PLT-OUT-0001', 'BOX-OUT-0001', 'BOX-OUT-0001', 'wh_admin', NULL, NULL, 'SN 从 A01-01-01 移动到同仓目标库位'),
+('MOVE-202606250002', 'PALLET_CHANGE', 'CONFIRMED', '3060', '杭州利沃得', 1, 'AREA-GOOD-01', 1, 'AREA-GOOD-01', 1, 'PLT-OUT-0001', 'PLT-MOVE-NEW', 'BOX-OUT-0001', 'BOX-MOVE-NEW', 'wh_admin', 'wh_admin', DATE_SUB(NOW(), INTERVAL 1 HOUR), 'SN 托盘/箱码变更已确认'),
+('MOVE-202606250003', 'LOCATION_MOVE', 'CREATED', '3060', '杭州利沃得', 1, 'AREA-GOOD-01', 1, 'AREA-GOOD-01', 13, 'PLT-NONSN-0001', 'PLT-NONSN-0002', 'BOX-NONSN-0001', 'BOX-NONSN-0002', 'wh_admin', NULL, NULL, '非 SN 产品按数量移库演示'),
+('MOVE-202606250004', 'LOCATION_MOVE', 'CREATED', '3060', '杭州利沃得', 1, 'AREA-GOOD-01', 7, 'AREA-GOOD-01', 13, 'PLT-BAD-0001', 'PLT-BAD-0002', 'BOX-BAD-0001', 'BOX-BAD-0002', 'wh_admin', NULL, NULL, '冻结库存不可移动演示');
+
+INSERT INTO wms_inventory_move_line (
+  move_order_id, line_no, product_id, sn_required, sn_code, batch_no,
+  from_location_id, to_location_id, from_pallet_code, to_pallet_code,
+  from_box_code, to_box_code, move_qty, unit, line_status
+)
+SELECT o.id, 10, p.id, 1, 'SN-OUT-0001', 'BATCH-OUT-DEMO', 1, 13,
+       'PLT-OUT-0001', 'PLT-OUT-0001', 'BOX-OUT-0001', 'BOX-OUT-0001', 1, 'PCS', 'CREATED'
+FROM wms_inventory_move_order o
+JOIN md_product p ON p.product_code = 'GT3-10KD1R11004' AND p.owner_code = '3060'
+WHERE o.move_order_no = 'MOVE-202606250001'
+LIMIT 1;
+
+INSERT INTO wms_inventory_move_line (
+  move_order_id, line_no, product_id, sn_required, sn_code, batch_no,
+  from_location_id, to_location_id, from_pallet_code, to_pallet_code,
+  from_box_code, to_box_code, move_qty, unit, line_status
+)
+SELECT o.id, 10, p.id, 1, 'SN-OUT-0002', 'BATCH-OUT-DEMO', 1, 1,
+       'PLT-OUT-0001', 'PLT-MOVE-NEW', 'BOX-OUT-0001', 'BOX-MOVE-NEW', 1, 'PCS', 'CONFIRMED'
+FROM wms_inventory_move_order o
+JOIN md_product p ON p.product_code = 'GT3-10KD1R11004' AND p.owner_code = '3060'
+WHERE o.move_order_no = 'MOVE-202606250002'
+LIMIT 1;
+
+UPDATE wms_serial_number
+SET pallet_code = 'PLT-MOVE-NEW', box_code = 'BOX-MOVE-NEW'
+WHERE sn_code = 'SN-OUT-0002';
+
+INSERT INTO wms_inventory_move_line (
+  move_order_id, line_no, product_id, sn_required, sn_code, batch_no,
+  from_location_id, to_location_id, from_pallet_code, to_pallet_code,
+  from_box_code, to_box_code, move_qty, unit, line_status
+)
+SELECT o.id, 10, p.id, 0, NULL, 'BATCH-MOVE-NONSN-202606', 1, 13,
+       'PLT-NONSN-0001', 'PLT-NONSN-0002', 'BOX-NONSN-0001', 'BOX-NONSN-0002', 8, 'PCS', 'CREATED'
+FROM wms_inventory_move_order o
+JOIN md_product p ON p.product_code = 'HXEDE081R10002' AND p.owner_code = '3060'
+WHERE o.move_order_no = 'MOVE-202606250003'
+LIMIT 1;
+
+INSERT INTO wms_inventory_move_line (
+  move_order_id, line_no, product_id, sn_required, sn_code, batch_no,
+  from_location_id, to_location_id, from_pallet_code, to_pallet_code,
+  from_box_code, to_box_code, move_qty, unit, line_status
+)
+SELECT o.id, 10, p.id, 1, 'SN-BAD-0001', 'BATCH-FROZEN-DEMO', 7, 13,
+       'PLT-BAD-0001', 'PLT-BAD-0002', 'BOX-BAD-0001', 'BOX-BAD-0002', 1, 'PCS', 'CREATED'
+FROM wms_inventory_move_order o
+JOIN md_product p ON p.product_code = 'GT3-10KD1R11004' AND p.owner_code = '3060'
+WHERE o.move_order_no = 'MOVE-202606250004'
+LIMIT 1;
+
+INSERT INTO wms_inventory_transaction (
+  transaction_no, transaction_type, business_doc_no, owner_code, owner_name,
+  warehouse_id, location_id, from_location_id, to_location_id, product_id, sn_code, batch_no,
+  from_pallet_code, to_pallet_code, from_box_code, to_box_code,
+  qty, before_qty, after_qty, operator, remark, created_at
+)
+SELECT 'TXN-MOVE-202606250002-OUT', 'MOVE_OUT', o.move_order_no, o.owner_code, o.owner_name,
+       o.warehouse_id, l.from_location_id, l.from_location_id, l.to_location_id, l.product_id, l.sn_code, l.batch_no,
+       l.from_pallet_code, l.to_pallet_code, l.from_box_code, l.to_box_code,
+       -1, NULL, NULL, 'wh_admin', '托盘/箱码变更来源记录', DATE_SUB(NOW(), INTERVAL 1 HOUR)
+FROM wms_inventory_move_order o JOIN wms_inventory_move_line l ON l.move_order_id = o.id
+WHERE o.move_order_no = 'MOVE-202606250002';
+
+INSERT INTO wms_inventory_transaction (
+  transaction_no, transaction_type, business_doc_no, owner_code, owner_name,
+  warehouse_id, location_id, from_location_id, to_location_id, product_id, sn_code, batch_no,
+  from_pallet_code, to_pallet_code, from_box_code, to_box_code,
+  qty, before_qty, after_qty, operator, remark, created_at
+)
+SELECT 'TXN-MOVE-202606250002-IN', 'MOVE_IN', o.move_order_no, o.owner_code, o.owner_name,
+       o.warehouse_id, l.to_location_id, l.from_location_id, l.to_location_id, l.product_id, l.sn_code, l.batch_no,
+       l.from_pallet_code, l.to_pallet_code, l.from_box_code, l.to_box_code,
+       1, NULL, NULL, 'wh_admin', '托盘/箱码变更目标记录', DATE_SUB(NOW(), INTERVAL 1 HOUR)
+FROM wms_inventory_move_order o JOIN wms_inventory_move_line l ON l.move_order_id = o.id
+WHERE o.move_order_no = 'MOVE-202606250002';
+
+INSERT INTO wms_operation_log (module, business_doc_no, action, operator, result, message, created_at) VALUES
+('INVENTORY_COUNT', 'CNT-202606250002', 'COUNT_RECORD', 'wh_admin', 'SUCCESS', '录入盘点差异：SN 盘亏', DATE_SUB(NOW(), INTERVAL 90 MINUTE)),
+('INVENTORY_COUNT', 'CNT-202606250003', 'DIFF_CONFIRM', 'wh_admin', 'SUCCESS', '确认非 SN 盘盈差异', DATE_SUB(NOW(), INTERVAL 3 HOUR)),
+('INVENTORY_COUNT', 'CNT-202606250004', 'COUNT_ADJUST', 'wh_admin', 'SUCCESS', '盘点调整已生效', DATE_SUB(NOW(), INTERVAL 20 HOUR)),
+('INVENTORY_MOVE', 'MOVE-202606250002', 'MOVE_CONFIRM', 'wh_admin', 'SUCCESS', '托盘/箱码变更已确认', DATE_SUB(NOW(), INTERVAL 1 HOUR));

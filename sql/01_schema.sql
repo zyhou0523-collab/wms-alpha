@@ -8,6 +8,11 @@ DROP TABLE IF EXISTS wms_interface_log;
 DROP TABLE IF EXISTS wms_mock_config;
 DROP TABLE IF EXISTS wms_outbound_status_history;
 DROP TABLE IF EXISTS wms_outbound_exception;
+DROP TABLE IF EXISTS wms_inventory_count_adjustment;
+DROP TABLE IF EXISTS wms_inventory_count_line;
+DROP TABLE IF EXISTS wms_inventory_count_order;
+DROP TABLE IF EXISTS wms_inventory_move_line;
+DROP TABLE IF EXISTS wms_inventory_move_order;
 DROP TABLE IF EXISTS wms_inventory_transaction;
 DROP TABLE IF EXISTS outbound_shipment_sn;
 DROP TABLE IF EXISTS outbound_shipment_line;
@@ -159,6 +164,8 @@ CREATE TABLE wms_inventory (
   owner_code VARCHAR(64) NULL,
   owner_name VARCHAR(128) NULL,
   batch_no VARCHAR(64) NULL,
+  pallet_code VARCHAR(64) NULL,
+  box_code VARCHAR(64) NULL,
   inventory_status VARCHAR(32) NOT NULL DEFAULT 'QUALIFIED',
   total_qty INT NOT NULL DEFAULT 0,
   available_qty INT NOT NULL DEFAULT 0,
@@ -171,6 +178,7 @@ CREATE TABLE wms_inventory (
   updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
   KEY idx_inventory_product (product_id),
   KEY idx_inventory_warehouse (warehouse_id),
+  KEY idx_inventory_packaging (pallet_code, box_code),
   CONSTRAINT fk_inventory_warehouse FOREIGN KEY (warehouse_id) REFERENCES wms_warehouse(id),
   CONSTRAINT fk_inventory_area FOREIGN KEY (area_id) REFERENCES wms_area(id),
   CONSTRAINT fk_inventory_location FOREIGN KEY (location_id) REFERENCES wms_location(id),
@@ -532,11 +540,19 @@ CREATE TABLE wms_inventory_transaction (
   transaction_no VARCHAR(64) NOT NULL UNIQUE,
   transaction_type VARCHAR(64) NOT NULL,
   business_doc_no VARCHAR(64) NOT NULL,
+  owner_code VARCHAR(64) NULL,
+  owner_name VARCHAR(128) NULL,
   warehouse_id BIGINT NOT NULL,
   location_id BIGINT NULL,
+  from_location_id BIGINT NULL,
+  to_location_id BIGINT NULL,
   product_id BIGINT NOT NULL,
   sn_code VARCHAR(128) NULL,
   batch_no VARCHAR(64) NULL,
+  from_pallet_code VARCHAR(64) NULL,
+  to_pallet_code VARCHAR(64) NULL,
+  from_box_code VARCHAR(64) NULL,
+  to_box_code VARCHAR(64) NULL,
   qty INT NOT NULL,
   before_qty INT NULL,
   after_qty INT NULL,
@@ -545,7 +561,146 @@ CREATE TABLE wms_inventory_transaction (
   created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
   CONSTRAINT fk_transaction_warehouse FOREIGN KEY (warehouse_id) REFERENCES wms_warehouse(id),
   CONSTRAINT fk_transaction_location FOREIGN KEY (location_id) REFERENCES wms_location(id),
+  CONSTRAINT fk_transaction_from_location FOREIGN KEY (from_location_id) REFERENCES wms_location(id),
+  CONSTRAINT fk_transaction_to_location FOREIGN KEY (to_location_id) REFERENCES wms_location(id),
   CONSTRAINT fk_transaction_product FOREIGN KEY (product_id) REFERENCES md_product(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE wms_inventory_count_order (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  count_order_no VARCHAR(64) NOT NULL UNIQUE,
+  count_type VARCHAR(32) NOT NULL,
+  count_scope VARCHAR(32) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'CREATED',
+  warehouse_id BIGINT NULL,
+  owner_code VARCHAR(64) NULL,
+  owner_name VARCHAR(128) NULL,
+  area_code VARCHAR(64) NULL,
+  location_code VARCHAR(64) NULL,
+  product_id BIGINT NULL,
+  product_code VARCHAR(64) NULL,
+  product_name VARCHAR(128) NULL,
+  batch_no VARCHAR(64) NULL,
+  pallet_code VARCHAR(64) NULL,
+  box_code VARCHAR(64) NULL,
+  sn_code VARCHAR(128) NULL,
+  freeze_flag TINYINT(1) NOT NULL DEFAULT 0,
+  start_time DATETIME NULL,
+  end_time DATETIME NULL,
+  created_by VARCHAR(64) NOT NULL DEFAULT 'admin',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_by VARCHAR(64) NULL,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  remark VARCHAR(255) NULL,
+  CONSTRAINT fk_count_order_warehouse FOREIGN KEY (warehouse_id) REFERENCES wms_warehouse(id),
+  CONSTRAINT fk_count_order_product FOREIGN KEY (product_id) REFERENCES md_product(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE wms_inventory_count_line (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  count_order_id BIGINT NOT NULL,
+  line_no INT NOT NULL,
+  owner_code VARCHAR(64) NULL,
+  owner_name VARCHAR(128) NULL,
+  warehouse_id BIGINT NOT NULL,
+  area_id BIGINT NULL,
+  location_id BIGINT NULL,
+  product_id BIGINT NOT NULL,
+  sn_required TINYINT(1) NOT NULL DEFAULT 0,
+  pallet_code VARCHAR(64) NULL,
+  box_code VARCHAR(64) NULL,
+  sn_code VARCHAR(128) NULL,
+  batch_no VARCHAR(64) NULL,
+  unit VARCHAR(32) NULL,
+  book_qty INT NOT NULL DEFAULT 0,
+  actual_qty INT NULL,
+  diff_qty INT NULL,
+  diff_type VARCHAR(32) NULL,
+  diff_reason VARCHAR(255) NULL,
+  handling_method VARCHAR(64) NULL,
+  line_status VARCHAR(32) NOT NULL DEFAULT 'NOT_COUNTED',
+  actual_location_code VARCHAR(64) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_count_order_line (count_order_id, line_no),
+  KEY idx_count_line_sn (sn_code),
+  CONSTRAINT fk_count_line_order FOREIGN KEY (count_order_id) REFERENCES wms_inventory_count_order(id),
+  CONSTRAINT fk_count_line_warehouse FOREIGN KEY (warehouse_id) REFERENCES wms_warehouse(id),
+  CONSTRAINT fk_count_line_area FOREIGN KEY (area_id) REFERENCES wms_area(id),
+  CONSTRAINT fk_count_line_location FOREIGN KEY (location_id) REFERENCES wms_location(id),
+  CONSTRAINT fk_count_line_product FOREIGN KEY (product_id) REFERENCES md_product(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE wms_inventory_count_adjustment (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  count_order_id BIGINT NOT NULL,
+  count_line_id BIGINT NOT NULL,
+  adjustment_no VARCHAR(64) NOT NULL UNIQUE,
+  adjustment_type VARCHAR(32) NOT NULL,
+  qty INT NOT NULL DEFAULT 0,
+  from_location_id BIGINT NULL,
+  to_location_id BIGINT NULL,
+  operator VARCHAR(64) NOT NULL DEFAULT 'admin',
+  result VARCHAR(32) NOT NULL DEFAULT 'SUCCESS',
+  remark VARCHAR(255) NULL,
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  CONSTRAINT fk_count_adjust_order FOREIGN KEY (count_order_id) REFERENCES wms_inventory_count_order(id),
+  CONSTRAINT fk_count_adjust_line FOREIGN KEY (count_line_id) REFERENCES wms_inventory_count_line(id),
+  CONSTRAINT fk_count_adjust_from_location FOREIGN KEY (from_location_id) REFERENCES wms_location(id),
+  CONSTRAINT fk_count_adjust_to_location FOREIGN KEY (to_location_id) REFERENCES wms_location(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE wms_inventory_move_order (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  move_order_no VARCHAR(64) NOT NULL UNIQUE,
+  move_type VARCHAR(32) NOT NULL,
+  status VARCHAR(32) NOT NULL DEFAULT 'CREATED',
+  owner_code VARCHAR(64) NOT NULL,
+  owner_name VARCHAR(128) NULL,
+  warehouse_id BIGINT NOT NULL,
+  from_area_code VARCHAR(64) NULL,
+  from_location_id BIGINT NULL,
+  to_area_code VARCHAR(64) NULL,
+  to_location_id BIGINT NULL,
+  from_pallet_code VARCHAR(64) NULL,
+  to_pallet_code VARCHAR(64) NULL,
+  from_box_code VARCHAR(64) NULL,
+  to_box_code VARCHAR(64) NULL,
+  created_by VARCHAR(64) NOT NULL DEFAULT 'admin',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  confirmed_by VARCHAR(64) NULL,
+  confirmed_at DATETIME NULL,
+  remark VARCHAR(255) NULL,
+  CONSTRAINT fk_move_order_warehouse FOREIGN KEY (warehouse_id) REFERENCES wms_warehouse(id),
+  CONSTRAINT fk_move_order_from_location FOREIGN KEY (from_location_id) REFERENCES wms_location(id),
+  CONSTRAINT fk_move_order_to_location FOREIGN KEY (to_location_id) REFERENCES wms_location(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+CREATE TABLE wms_inventory_move_line (
+  id BIGINT PRIMARY KEY AUTO_INCREMENT,
+  move_order_id BIGINT NOT NULL,
+  line_no INT NOT NULL,
+  product_id BIGINT NOT NULL,
+  sn_required TINYINT(1) NOT NULL DEFAULT 0,
+  sn_code VARCHAR(128) NULL,
+  batch_no VARCHAR(64) NULL,
+  from_location_id BIGINT NULL,
+  to_location_id BIGINT NULL,
+  from_pallet_code VARCHAR(64) NULL,
+  to_pallet_code VARCHAR(64) NULL,
+  from_box_code VARCHAR(64) NULL,
+  to_box_code VARCHAR(64) NULL,
+  move_qty INT NOT NULL DEFAULT 1,
+  unit VARCHAR(32) NULL,
+  line_status VARCHAR(32) NOT NULL DEFAULT 'CREATED',
+  created_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP,
+  updated_at DATETIME NOT NULL DEFAULT CURRENT_TIMESTAMP ON UPDATE CURRENT_TIMESTAMP,
+  UNIQUE KEY uk_move_order_line (move_order_id, line_no),
+  KEY idx_move_line_sn (sn_code),
+  CONSTRAINT fk_move_line_order FOREIGN KEY (move_order_id) REFERENCES wms_inventory_move_order(id),
+  CONSTRAINT fk_move_line_product FOREIGN KEY (product_id) REFERENCES md_product(id),
+  CONSTRAINT fk_move_line_from_location FOREIGN KEY (from_location_id) REFERENCES wms_location(id),
+  CONSTRAINT fk_move_line_to_location FOREIGN KEY (to_location_id) REFERENCES wms_location(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
 CREATE TABLE wms_outbound_exception (

@@ -32,6 +32,8 @@ public class QueryController {
       @RequestParam(required = false) String locationCode,
       @RequestParam(required = false) String productCode,
       @RequestParam(required = false) String batchNo,
+      @RequestParam(required = false) String palletCode,
+      @RequestParam(required = false) String boxCode,
       @RequestParam(required = false) String inventoryStatus,
       @RequestParam(defaultValue = "1") int pageNum,
       @RequestParam(defaultValue = "10") int pageSize
@@ -42,6 +44,8 @@ public class QueryController {
     params.put("locationCode", repo.like(locationCode));
     params.put("productCode", repo.like(productCode));
     params.put("batchNo", repo.like(batchNo));
+    params.put("palletCode", repo.like(palletCode));
+    params.put("boxCode", repo.like(boxCode));
     params.put("inventoryStatus", repo.like(inventoryStatus));
     String from = """
         FROM wms_inventory i
@@ -50,16 +54,21 @@ public class QueryController {
         JOIN wms_location l ON l.id = i.location_id
         JOIN md_product p ON p.id = i.product_id
         WHERE (:warehouseCode IS NULL OR w.warehouse_code LIKE :warehouseCode)
-          AND (:ownerCode IS NULL OR p.owner_code LIKE :ownerCode OR p.owner_name LIKE :ownerCode)
+          AND (:ownerCode IS NULL OR COALESCE(i.owner_code, p.owner_code) LIKE :ownerCode OR COALESCE(i.owner_name, p.owner_name) LIKE :ownerCode)
           AND (:locationCode IS NULL OR l.location_code LIKE :locationCode)
           AND (:productCode IS NULL OR p.product_code LIKE :productCode)
           AND (:batchNo IS NULL OR i.batch_no LIKE :batchNo)
+          AND (:palletCode IS NULL OR i.pallet_code LIKE :palletCode)
+          AND (:boxCode IS NULL OR i.box_code LIKE :boxCode)
           AND (:inventoryStatus IS NULL OR i.inventory_status LIKE :inventoryStatus)
         """;
     return ApiResponse.ok(repo.page(
         """
         SELECT i.*, w.warehouse_code, w.warehouse_name, a.area_code, a.area_name,
-               l.location_code, p.owner_code, p.owner_name, p.product_code, p.product_name, p.safety_stock, p.aging_threshold_days,
+               l.location_code,
+               COALESCE(i.owner_code, p.owner_code) AS owner_code,
+               COALESCE(i.owner_name, p.owner_name) AS owner_name,
+               p.product_code, p.product_name, p.unit, p.sn_managed, p.safety_stock, p.aging_threshold_days,
                CASE WHEN i.available_qty < p.safety_stock THEN 1 ELSE 0 END AS low_stock,
                CASE WHEN DATEDIFF(CURDATE(), i.inbound_date) > p.aging_threshold_days THEN 1 ELSE 0 END AS aged
         """ + from + " ORDER BY low_stock DESC, aged DESC, i.id DESC",

@@ -10,6 +10,8 @@ import WarehousePage from '../views/warehouse/WarehousePage.vue'
 import LocationPage from '../views/warehouse/LocationPage.vue'
 import InventoryPage from '../views/inventory/InventoryPage.vue'
 import SnPage from '../views/inventory/SnPage.vue'
+import InventoryCountPage from '../views/inventory/InventoryCountPage.vue'
+import InventoryMovePage from '../views/inventory/InventoryMovePage.vue'
 import InboundOrderPage from '../views/inbound/InboundOrderPage.vue'
 import InboundOrderDetail from '../views/inbound/InboundOrderDetail.vue'
 import SnBindingPage from '../views/inbound/SnBindingPage.vue'
@@ -39,6 +41,8 @@ const routes: RouteRecordRaw[] = [
       { path: 'warehouse/locations', component: LocationPage, meta: { title: '库位管理' } },
       { path: 'inventory/list', component: InventoryPage, meta: { title: '库存查询' } },
       { path: 'inventory/sn', component: SnPage, meta: { title: 'SN 查询' } },
+      { path: 'inventory/count', component: InventoryCountPage, meta: { title: '库存盘点' } },
+      { path: 'inventory/move', component: InventoryMovePage, meta: { title: '库存移动' } },
       { path: 'inbound/arrival-notices', component: InboundOrderPage, meta: { title: '预期到货通知单' } },
       { path: 'inbound/arrival-notices/:id', component: InboundOrderDetail, meta: { title: '预期到货通知单详情' } },
       { path: 'inbound/sn-bindings', component: SnBindingPage, meta: { title: 'SN 绑定' } },

@@ -77,7 +77,28 @@ export const locationService = {
 }
 
 export const inventoryService = {
-  list: (params: ListParams) => list('/inventory', params)
+  list: (params: ListParams) => list('/inventory', params),
+  transactions: (params: ListParams) => list('/inventory/transactions', params)
+}
+
+export const inventoryCountService = {
+  list: (params: ListParams) => list('/inventory/count-orders', params),
+  detail: (id: number) => request<any>({ url: `/inventory/count-orders/${id}`, method: 'get' }),
+  create: (data: Record<string, unknown>) => request<any>({ url: '/inventory/count-orders', method: 'post', data }),
+  generateLines: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/inventory/count-orders/${id}/generate-lines`, method: 'post', data }),
+  record: (id: number, data: Record<string, unknown>) => request<any>({ url: `/inventory/count-orders/${id}/record`, method: 'post', data }),
+  confirmDifference: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/inventory/count-orders/${id}/confirm-difference`, method: 'post', data }),
+  adjust: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/inventory/count-orders/${id}/adjust`, method: 'post', data }),
+  cancel: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/inventory/count-orders/${id}/cancel`, method: 'post', data })
+}
+
+export const inventoryMoveService = {
+  list: (params: ListParams) => list('/inventory/move-orders', params),
+  detail: (id: number) => request<any>({ url: `/inventory/move-orders/${id}`, method: 'get' }),
+  create: (data: Record<string, unknown>) => request<any>({ url: '/inventory/move-orders', method: 'post', data }),
+  confirm: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/inventory/move-orders/${id}/confirm`, method: 'post', data }),
+  cancel: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/inventory/move-orders/${id}/cancel`, method: 'post', data }),
+  stockCandidates: (params: ListParams) => request<any>({ url: '/inventory/move-orders/stock-candidates', method: 'get', params })
 }
 
 export const snService = {

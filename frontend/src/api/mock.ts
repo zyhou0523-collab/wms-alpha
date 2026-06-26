@@ -545,12 +545,15 @@ function syncOutboundHeaderQty(orders: Row[], lines: Row[]) {
   })
 }
 
-const endpointMap: Record<string, keyof ReturnType<typeof seed>> = {
+const endpointMap: Record<string, string> = {
   '/products': 'products',
   '/customers': 'customers',
   '/warehouses': 'warehouses',
   '/locations': 'locations',
   '/inventory': 'inventory',
+  '/inventory/count-orders': 'inventoryCountOrders',
+  '/inventory/move-orders': 'inventoryMoveOrders',
+  '/inventory/transactions': 'inventoryTransactions',
   '/serial-numbers': 'serialNumbers',
   '/inbound-orders': 'inboundOrders',
   '/inbound/sn-bindings': 'packageBindings',
@@ -800,7 +803,9 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
       ] },
       { id: 'inventory', title: '库存管理', icon: 'Box', children: [
         { id: 'inventoryList', title: '库存查询', path: '/inventory/list' },
-        { id: 'snList', title: 'SN 查询', path: '/inventory/sn' }
+        { id: 'snList', title: 'SN 查询', path: '/inventory/sn' },
+        { id: 'inventoryCount', title: '库存盘点', path: '/inventory/count' },
+        { id: 'inventoryMove', title: '库存移动', path: '/inventory/move' }
       ] },
       { id: 'reports', title: '报表中心', icon: 'DataAnalysis', children: [
         { id: 'inoutStockReport', title: '进出存报表', path: '/reports/inout-stock' },
@@ -851,7 +856,9 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
       { id: 'outbound', title: '出库管理', icon: 'Upload', children: [{ id: 'shippingOrders', title: '发运订单', path: '/outbound/shipping-orders' }] },
       { id: 'inventory', title: '库存管理', icon: 'Box', children: [
         { id: 'inventoryList', title: '库存查询', path: '/inventory/list' },
-        { id: 'snList', title: 'SN 查询', path: '/inventory/sn' }
+        { id: 'snList', title: 'SN 查询', path: '/inventory/sn' },
+        { id: 'inventoryCount', title: '库存盘点', path: '/inventory/count' },
+        { id: 'inventoryMove', title: '库存移动', path: '/inventory/move' }
       ] },
       { id: 'reports', title: '报表中心', icon: 'DataAnalysis', children: [
         { id: 'inoutStockReport', title: '进出存报表', path: '/reports/inout-stock' },
@@ -1160,6 +1167,9 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
   const outboundResult = handleOutboundMock<T>(store, url, method, (config.params || {}) as Row, (config.data || {}) as Row)
   if (outboundResult.handled) return outboundResult.value
 
+  const inventoryOpsResult = handleInventoryOpsMock<T>(store, url, method, (config.params || {}) as Row, (config.data || {}) as Row)
+  if (inventoryOpsResult.handled) return inventoryOpsResult.value
+
   const basePath = Object.keys(endpointMap).find((key) => url === key || url.startsWith(`${key}/`))
   if (!basePath) {
     return {} as T
@@ -1254,6 +1264,11 @@ function normalizeStore(store: any) {
   store.reviewRecords ||= []
   store.shipmentRecords ||= []
   store.inventoryTransactions ||= []
+  store.inventoryCountOrders ||= mockCountOrders()
+  store.inventoryCountLines ||= mockCountLines()
+  store.inventoryCountAdjustments ||= []
+  store.inventoryMoveOrders ||= mockMoveOrders()
+  store.inventoryMoveLines ||= mockMoveLines()
   store.outboundExceptions ||= []
   restoreFullMockSeedIfReduced(store, fresh)
   ensureOwnerCustomerProductData(store)
@@ -1354,11 +1369,18 @@ function ensureMockOwnerOnStock(store: any) {
     const product = (store.products || []).find((item: Row) => item.product_code === row.product_code || Number(item.id) === Number(row.product_id))
     row.owner_code ||= product?.owner_code || '3060'
     row.owner_name ||= product?.owner_name || '杭州利沃得'
+    row.sn_managed ??= product?.sn_managed || 0
+    row.unit ||= product?.unit || 'PCS'
+    row.pallet_code ||= `PLT-MOCK-${String(row.id || 1).padStart(4, '0')}`
+    row.box_code ||= `BOX-MOCK-${String(row.id || 1).padStart(4, '0')}`
   })
   ;(store.serialNumbers || []).forEach((row: Row) => {
     const product = (store.products || []).find((item: Row) => item.product_code === row.product_code || Number(item.id) === Number(row.product_id))
     row.owner_code ||= product?.owner_code || '3060'
     row.owner_name ||= product?.owner_name || '杭州利沃得'
+    row.sn_managed ??= product?.sn_managed || 1
+    row.quality_status ||= 'QUALIFIED'
+    row.locked_flag ??= row.status === 'ALLOCATED' || row.status === 'PICKED' ? 1 : 0
   })
 }
 
@@ -2910,6 +2932,194 @@ function pageRows(rows: Row[], params: Row) {
   const pageSize = Number(params.pageSize || 10)
   const start = (pageNum - 1) * pageSize
   return { items: filtered.slice(start, start + pageSize), total: filtered.length, pageNum, pageSize }
+}
+
+function mockCountOrders() {
+  return [
+    { id: 1, count_order_no: 'CNT-MOCK-001', count_type: 'FULL', count_scope: 'WAREHOUSE', status: 'CREATED', warehouse_code: 'WH-HZ-CENTRAL', warehouse_name: '杭州集团总仓', owner_code: '3060', owner_name: '杭州利沃得', line_count: 2, diff_count: 0, freeze_flag: 0, created_by: 'wh_admin', created_at: '2026-06-25 09:00:00' },
+    { id: 2, count_order_no: 'CNT-MOCK-002', count_type: 'CYCLE', count_scope: 'LOCATION', status: 'RECORDED', warehouse_code: 'WH-HZ-CENTRAL', warehouse_name: '杭州集团总仓', owner_code: '3060', owner_name: '杭州利沃得', location_code: 'A01-01-01', line_count: 2, diff_count: 1, freeze_flag: 0, created_by: 'wh_admin', created_at: '2026-06-25 10:00:00' },
+    { id: 3, count_order_no: 'CNT-MOCK-003', count_type: 'RANGE', count_scope: 'PRODUCT', status: 'DIFF_CONFIRMED', warehouse_code: 'WH-HZ-CENTRAL', warehouse_name: '杭州集团总仓', owner_code: '3060', owner_name: '杭州利沃得', product_code: 'HXEDE081R10002', product_name: '电表模块', line_count: 1, diff_count: 1, freeze_flag: 0, created_by: 'wh_admin', created_at: '2026-06-25 11:00:00' }
+  ]
+}
+
+function mockCountLines() {
+  return [
+    { id: 1, count_order_id: 1, line_no: 10, owner_code: '3060', owner_name: '杭州利沃得', warehouse_code: 'WH-HZ-CENTRAL', warehouse_name: '杭州集团总仓', area_code: 'AREA-GOOD-01', location_code: 'A01-01-01', product_code: 'GT3-10KD1R11004', product_name: '三相并网逆变器', sn_required: 1, sn_code: 'SN-OUT-0001', pallet_code: 'PLT-OUT-0001', box_code: 'BOX-OUT-0001', book_qty: 1, actual_qty: null, diff_qty: null, diff_type: null, line_status: 'NOT_COUNTED' },
+    { id: 2, count_order_id: 1, line_no: 20, owner_code: '3060', owner_name: '杭州利沃得', warehouse_code: 'WH-HZ-CENTRAL', warehouse_name: '杭州集团总仓', area_code: 'AREA-GOOD-01', location_code: 'A01-01-01', product_code: 'HXEDE081R10002', product_name: '电表模块', sn_required: 0, sn_code: '', pallet_code: 'PLT-NONSN-0001', box_code: 'BOX-NONSN-0001', book_qty: 36, actual_qty: null, diff_qty: null, diff_type: null, line_status: 'NOT_COUNTED' },
+    { id: 3, count_order_id: 2, line_no: 10, owner_code: '3060', owner_name: '杭州利沃得', warehouse_code: 'WH-HZ-CENTRAL', warehouse_name: '杭州集团总仓', area_code: 'AREA-GOOD-01', location_code: 'A01-01-01', product_code: 'GT3-10KD1R11004', product_name: '三相并网逆变器', sn_required: 1, sn_code: 'SN-OUT-0003', pallet_code: 'PLT-OUT-0001', box_code: 'BOX-OUT-0001', book_qty: 1, actual_qty: 0, diff_qty: -1, diff_type: 'SHORTAGE', diff_reason: '实物未找到', handling_method: 'DECREASE_STOCK', line_status: 'DIFFERENCE' },
+    { id: 4, count_order_id: 3, line_no: 10, owner_code: '3060', owner_name: '杭州利沃得', warehouse_code: 'WH-HZ-CENTRAL', warehouse_name: '杭州集团总仓', area_code: 'AREA-GOOD-01', location_code: 'A01-01-01', product_code: 'HXEDE081R10002', product_name: '电表模块', sn_required: 0, sn_code: '', pallet_code: 'PLT-NONSN-0001', box_code: 'BOX-NONSN-0001', book_qty: 36, actual_qty: 38, diff_qty: 2, diff_type: 'OVERAGE', diff_reason: '现场多出 2 PCS', handling_method: 'INCREASE_STOCK', line_status: 'CONFIRMED' }
+  ]
+}
+
+function mockMoveOrders() {
+  return [
+    { id: 1, move_order_no: 'MOVE-MOCK-001', move_type: 'LOCATION_MOVE', status: 'CREATED', owner_code: '3060', owner_name: '杭州利沃得', warehouse_code: 'WH-HZ-CENTRAL', warehouse_name: '杭州集团总仓', from_location_code: 'A01-01-01', to_location_code: 'A03-01-13', from_pallet_code: 'PLT-OUT-0001', to_pallet_code: 'PLT-OUT-0001', line_count: 1, total_move_qty: 1, created_by: 'wh_admin', created_at: '2026-06-25 12:00:00' },
+    { id: 2, move_order_no: 'MOVE-MOCK-002', move_type: 'PALLET_CHANGE', status: 'CONFIRMED', owner_code: '3060', owner_name: '杭州利沃得', warehouse_code: 'WH-HZ-CENTRAL', warehouse_name: '杭州集团总仓', from_location_code: 'A01-01-01', to_location_code: 'A01-01-01', from_pallet_code: 'PLT-OUT-0001', to_pallet_code: 'PLT-MOVE-NEW', line_count: 1, total_move_qty: 1, created_by: 'wh_admin', confirmed_by: 'wh_admin', confirmed_at: '2026-06-25 13:00:00', created_at: '2026-06-25 12:30:00' }
+  ]
+}
+
+function mockMoveLines() {
+  return [
+    { id: 1, move_order_id: 1, line_no: 10, product_code: 'GT3-10KD1R11004', product_name: '三相并网逆变器', sn_required: 1, sn_code: 'SN-OUT-0001', batch_no: 'BATCH-OUT-DEMO', from_location_code: 'A01-01-01', to_location_code: 'A03-01-13', from_pallet_code: 'PLT-OUT-0001', to_pallet_code: 'PLT-OUT-0001', from_box_code: 'BOX-OUT-0001', to_box_code: 'BOX-OUT-0001', move_qty: 1, line_status: 'CREATED' },
+    { id: 2, move_order_id: 2, line_no: 10, product_code: 'GT3-10KD1R11004', product_name: '三相并网逆变器', sn_required: 1, sn_code: 'SN-OUT-0002', batch_no: 'BATCH-OUT-DEMO', from_location_code: 'A01-01-01', to_location_code: 'A01-01-01', from_pallet_code: 'PLT-OUT-0001', to_pallet_code: 'PLT-MOVE-NEW', from_box_code: 'BOX-OUT-0001', to_box_code: 'BOX-MOVE-NEW', move_qty: 1, line_status: 'CONFIRMED' }
+  ]
+}
+
+function handleInventoryOpsMock<T>(store: any, url: string, method: string, params: Row, body: Row) {
+  if (url === '/inventory/move-orders/stock-candidates' && method === 'get') {
+    return { handled: true, value: {
+      inventory: pageRows(store.inventory || [], { ...params, pageSize: 50 }).items,
+      sns: pageRows(store.serialNumbers || [], { ...params, pageSize: 50 }).items,
+      locations: store.locations || []
+    } as T }
+  }
+  if (url === '/inventory/transactions' && method === 'get') {
+    return { handled: true, value: pageRows(store.inventoryTransactions || [], params) as T }
+  }
+  if (url === '/inventory/count-orders' && method === 'get') {
+    return { handled: true, value: pageRows(store.inventoryCountOrders || [], params) as T }
+  }
+  if (url === '/inventory/count-orders' && method === 'post') {
+    const id = nextId(store.inventoryCountOrders)
+    const order = {
+      id,
+      count_order_no: body.countOrderNo || `CNT-MOCK-${mockTimestamp()}`,
+      count_type: body.countType || 'RANGE',
+      count_scope: body.countScope || 'LOCATION',
+      status: 'COUNTING',
+      warehouse_code: body.warehouseCode || 'WH-HZ-CENTRAL',
+      warehouse_name: '杭州集团总仓',
+      owner_code: body.ownerCode || '3060',
+      owner_name: body.ownerName || '杭州利沃得',
+      location_code: body.locationCode || '',
+      product_code: body.productCode || '',
+      freeze_flag: body.freezeFlag ? 1 : 0,
+      line_count: 2,
+      diff_count: 0,
+      created_by: body.operator || 'wh_admin',
+      created_at: now(),
+      remark: body.remark || ''
+    }
+    store.inventoryCountOrders.unshift(order)
+    const nextLineId = nextId(store.inventoryCountLines)
+    store.inventoryCountLines.unshift(
+      { id: nextLineId, count_order_id: id, line_no: 10, owner_code: order.owner_code, owner_name: order.owner_name, warehouse_code: order.warehouse_code, warehouse_name: order.warehouse_name, location_code: order.location_code || 'A01-01-01', product_code: 'GT3-10KD1R11004', product_name: '三相并网逆变器', sn_required: 1, sn_code: 'SN-OUT-0001', pallet_code: 'PLT-OUT-0001', box_code: 'BOX-OUT-0001', book_qty: 1, actual_qty: null, diff_qty: null, diff_type: null, line_status: 'NOT_COUNTED' },
+      { id: nextLineId + 1, count_order_id: id, line_no: 20, owner_code: order.owner_code, owner_name: order.owner_name, warehouse_code: order.warehouse_code, warehouse_name: order.warehouse_name, location_code: order.location_code || 'A01-01-01', product_code: 'HXEDE081R10002', product_name: '电表模块', sn_required: 0, sn_code: '', pallet_code: 'PLT-NONSN-0001', box_code: 'BOX-NONSN-0001', book_qty: 36, actual_qty: null, diff_qty: null, diff_type: null, line_status: 'NOT_COUNTED' }
+    )
+    saveStore(store)
+    return { handled: true, value: mockCountDetail(store, id) as T }
+  }
+  const countMatch = url.match(/^\/inventory\/count-orders\/(\d+)(?:\/([^/]+))?$/)
+  if (countMatch) {
+    const id = Number(countMatch[1])
+    const action = countMatch[2]
+    if (method === 'get' && !action) return { handled: true, value: mockCountDetail(store, id) as T }
+    const order = (store.inventoryCountOrders || []).find((row: Row) => Number(row.id) === id)
+    if (!order) return { handled: true, value: {} as T }
+    if (method === 'post' && action === 'generate-lines') order.status = 'COUNTING'
+    if (method === 'post' && action === 'record') {
+      order.status = 'RECORDED'
+      ;(store.inventoryCountLines || []).filter((line: Row) => Number(line.count_order_id) === id).forEach((line: Row) => {
+        const input = (body.lines || []).find((item: Row) => Number(item.id) === Number(line.id))
+        if (input) {
+          line.actual_qty = input.actualQty
+          line.diff_qty = Number(input.actualQty || 0) - Number(line.book_qty || 0)
+          line.diff_type = line.diff_qty > 0 ? 'OVERAGE' : line.diff_qty < 0 ? 'SHORTAGE' : 'NONE'
+          line.line_status = line.diff_type === 'NONE' ? 'COUNTED' : 'DIFFERENCE'
+        }
+      })
+      order.diff_count = (store.inventoryCountLines || []).filter((line: Row) => Number(line.count_order_id) === id && line.diff_type && line.diff_type !== 'NONE').length
+    }
+    if (method === 'post' && action === 'confirm-difference') {
+      order.status = 'DIFF_CONFIRMED'
+      ;(store.inventoryCountLines || []).filter((line: Row) => Number(line.count_order_id) === id).forEach((line: Row) => { if (line.diff_type && line.diff_type !== 'NONE') line.line_status = 'CONFIRMED' })
+    }
+    if (method === 'post' && action === 'adjust') {
+      order.status = 'ADJUSTED'
+      ;(store.inventoryCountLines || []).filter((line: Row) => Number(line.count_order_id) === id).forEach((line: Row) => { line.line_status = 'ADJUSTED' })
+      store.inventoryTransactions.unshift({ id: nextId(store.inventoryTransactions), transaction_no: `TXN-MOCK-${mockTimestamp()}`, transaction_type: 'COUNT_ADJUST', business_doc_no: order.count_order_no, owner_code: order.owner_code, owner_name: order.owner_name, warehouse_code: order.warehouse_code, product_code: 'HXEDE081R10002', qty: 1, operator: body.operator || 'wh_admin', remark: 'mock 盘点调整流水', created_at: now() })
+    }
+    if (method === 'post' && action === 'cancel') order.status = 'CANCELED'
+    saveStore(store)
+    return { handled: true, value: mockCountDetail(store, id) as T }
+  }
+
+  if (url === '/inventory/move-orders' && method === 'get') {
+    return { handled: true, value: pageRows(store.inventoryMoveOrders || [], params) as T }
+  }
+  if (url === '/inventory/move-orders' && method === 'post') {
+    const id = nextId(store.inventoryMoveOrders)
+    const order = {
+      id,
+      move_order_no: body.moveOrderNo || `MOVE-MOCK-${mockTimestamp()}`,
+      move_type: body.moveType || 'LOCATION_MOVE',
+      status: 'CREATED',
+      owner_code: body.ownerCode || '3060',
+      owner_name: body.ownerName || '杭州利沃得',
+      warehouse_code: body.warehouseCode || 'WH-HZ-CENTRAL',
+      warehouse_name: '杭州集团总仓',
+      from_location_code: body.fromLocationCode || '',
+      to_location_code: body.toLocationCode || '',
+      from_pallet_code: body.fromPalletCode || '',
+      to_pallet_code: body.toPalletCode || '',
+      line_count: (body.lines || []).length || 1,
+      total_move_qty: (body.lines || []).reduce((sumValue: number, line: Row) => sumValue + Number(line.moveQty || 1), 0) || 1,
+      created_by: body.operator || 'wh_admin',
+      created_at: now(),
+      remark: body.remark || ''
+    }
+    store.inventoryMoveOrders.unshift(order)
+    ;((body.lines || []) as Row[]).forEach((line, index) => {
+      store.inventoryMoveLines.unshift({ id: nextId(store.inventoryMoveLines), move_order_id: id, line_no: line.lineNo || (index + 1) * 10, product_code: line.productCode || 'GT3-10KD1R11004', product_name: line.productCode ? '电表模块' : '三相并网逆变器', sn_required: line.snCode ? 1 : 0, sn_code: line.snCode || '', batch_no: line.batchNo || '', from_location_code: body.fromLocationCode, to_location_code: body.toLocationCode, from_pallet_code: line.fromPalletCode || '', to_pallet_code: line.toPalletCode || '', from_box_code: line.fromBoxCode || '', to_box_code: line.toBoxCode || '', move_qty: line.moveQty || 1, line_status: 'CREATED' })
+    })
+    saveStore(store)
+    return { handled: true, value: mockMoveDetail(store, id) as T }
+  }
+  const moveMatch = url.match(/^\/inventory\/move-orders\/(\d+)(?:\/([^/]+))?$/)
+  if (moveMatch) {
+    const id = Number(moveMatch[1])
+    const action = moveMatch[2]
+    if (method === 'get' && !action) return { handled: true, value: mockMoveDetail(store, id) as T }
+    const order = (store.inventoryMoveOrders || []).find((row: Row) => Number(row.id) === id)
+    if (!order) return { handled: true, value: {} as T }
+    if (method === 'post' && action === 'confirm') {
+      order.status = 'CONFIRMED'
+      order.confirmed_by = body.operator || 'wh_admin'
+      order.confirmed_at = now()
+      ;(store.inventoryMoveLines || []).filter((line: Row) => Number(line.move_order_id) === id).forEach((line: Row) => { line.line_status = 'CONFIRMED' })
+      store.inventoryTransactions.unshift({ id: nextId(store.inventoryTransactions), transaction_no: `TXN-MOVE-MOCK-${mockTimestamp()}`, transaction_type: 'MOVE', business_doc_no: order.move_order_no, owner_code: order.owner_code, owner_name: order.owner_name, warehouse_code: order.warehouse_code, qty: order.total_move_qty, operator: body.operator || 'wh_admin', remark: 'mock 库存移动流水', created_at: now() })
+    }
+    if (method === 'post' && action === 'cancel') {
+      order.status = 'CANCELED'
+      ;(store.inventoryMoveLines || []).filter((line: Row) => Number(line.move_order_id) === id).forEach((line: Row) => { line.line_status = 'CANCELED' })
+    }
+    saveStore(store)
+    return { handled: true, value: mockMoveDetail(store, id) as T }
+  }
+  return { handled: false, value: undefined as T }
+}
+
+function mockCountDetail(store: any, id: number) {
+  const order = (store.inventoryCountOrders || []).find((row: Row) => Number(row.id) === id)
+  const lines = (store.inventoryCountLines || []).filter((row: Row) => Number(row.count_order_id) === id)
+  return {
+    order,
+    lines,
+    differences: lines.filter((row: Row) => row.diff_type && row.diff_type !== 'NONE'),
+    adjustments: store.inventoryCountAdjustments || [],
+    transactions: (store.inventoryTransactions || []).filter((row: Row) => row.business_doc_no === order?.count_order_no),
+    operationLogs: []
+  }
+}
+
+function mockMoveDetail(store: any, id: number) {
+  const order = (store.inventoryMoveOrders || []).find((row: Row) => Number(row.id) === id)
+  return {
+    order,
+    lines: (store.inventoryMoveLines || []).filter((row: Row) => Number(row.move_order_id) === id),
+    transactions: (store.inventoryTransactions || []).filter((row: Row) => row.business_doc_no === order?.move_order_no),
+    operationLogs: []
+  }
 }
 
 function pageInboundOrders(store: any, params: Row) {

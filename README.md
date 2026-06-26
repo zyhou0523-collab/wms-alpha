@@ -1,41 +1,39 @@
 # WMS Alpha
 
-## 项目简介
-
-WMS Alpha 是面向制造业新能源成品仓储场景的 WMS 原型系统，用于演示基础数据、仓库库位、库存 SN、入库闭环、SAP Mock 回传、接口日志和操作日志等核心能力。
+WMS Alpha 是面向新能源制造业成品仓储场景的 WMS PC 端原型系统，用于演示基础数据、仓库设置、入库闭环、出库 / 发货闭环、库存查询、SN 追溯、库存移动、库存盘点、数据驾驶舱和数据报表等核心能力。
 
 当前工程已经整理为可发布到 GitHub / Gitee / GitLab 的标准全栈项目，便于后续通过 Git 地址拉取代码、启动本地 Web 页面并继续迭代。
 
 ## 当前版本
 
-WMS PC V1.5
+WMS PC V2.0
 
-## V1.5 发布信息
+## V2.0 发布信息
 
-- 版本号：V1.5
-- 版本类型：PC 端阶段版本
+- 版本号：V2.0
+- 版本类型：PC 端完整阶段版本
+- 发布日期：2026-06-26
 - Git 仓库：https://github.com/zyhou0523-collab/wms-alpha.git
-- 发布分支：release/wms-pc-v1.5
-- 发布 Tag：WMS_PC_V1.5
-- 本版本重点：发货管理模块、数据驾驶舱看板、数据报表
+- 发布分支：release/wms-pc-v2.0
+- 发布 Tag：WMS_PC_V2.0
+- 本版本重点：在 V1.5 基础上追加库存管理能力，支持库存移动、库存盘点和库存查询快捷移动。
 
-## 已完成功能
+## 主要功能模块
 
-- 数据驾驶舱
-- 基础数据：产品主数据、客户/供应商/货主主数据
-- 仓库设置：仓库、库区、库位
-- 库存管理：库存查询、SN 查询
-- 入库管理：预期到货通知单、主从结构、行明细展开
-- 新建入库单、产品行复制、SN 管理和非 SN 管理差异收货
-- SN 采集、托盘/箱/SN 绑定、SN 绑定列表
-- 收货确认、SAP 入库 Mock 回传、失败重传
-- 产品/客户/入库单/SN 绑定导入导出
-- 接口日志、操作日志
-- 出库 Alpha 原型页面和 Mock 数据
+- 数据驾驶舱：全球库存看板、KPI 指标、世界地图库存分布、全球 / 地区部 / 仓库层级穿透、安全库存预警、呆滞库存预警。
+- 工作台：待办入口、库存查询、安全库存预警、业务单据入口。
+- 基础数据：产品主数据、客户 / 供应商 / 货主主数据。
+- 仓库设置：仓库、库区、库位、托盘码打印。
+- 入库管理：预期到货通知单、入库单主子结构、SN 采集 / 托盘箱码绑定、收货确认、取消收货、SAP 入库回传与重传、导入导出。
+- 出库 / 发货管理：发运订单、主子结构列表、库存分配、人工指定分配、拣货、发货、取消分配、取消拣货、取消发货、订单关闭、部分发运、分单处理、SAP 出库回传。
+- 库存管理：库存查询、SN 查询、多货主库存、库存移动、库存盘点、库存流水。
+- 数据报表：进出存报表、入库日报表、出库日报表、标准库龄报表、分段库龄报表、出库 SN 报表、入库 SN 报表。
+- 接口中心：SAP Mock、MES Mock、履约系统 Mock、追溯系统 Mock、接口日志、失败重试。
+- 系统设置：用户和菜单相关配置。
 
 ## 技术栈
 
-- 前端：Vue 3 + TypeScript + Element Plus + Vite
+- 前端：Vue 3 + TypeScript + Element Plus + Vite + ECharts
 - 后端：Java 17 + Spring Boot 3 + Spring JDBC
 - 数据库：MySQL 8
 - 接口：REST API + Swagger UI
@@ -43,13 +41,13 @@ WMS PC V1.5
 
 ## 快速启动
 
-请查看 [QUICK_START.md](./QUICK_START.md)。
-
-最短路径：
+完整步骤请查看 [QUICK_START.md](./QUICK_START.md)。
 
 ```bash
-git clone <your-git-url>
+git clone https://github.com/zyhou0523-collab/wms-alpha.git
 cd wms-alpha
+git checkout release/wms-pc-v2.0
+
 docker compose up -d mysql
 
 cd backend
@@ -65,59 +63,6 @@ npm run dev
 - 前端：http://localhost:5173
 - 后端：http://localhost:8080
 - Swagger：http://localhost:8080/swagger-ui/index.html
-
-## 演示账号
-
-| 账号 | 密码 | 角色 |
-| --- | --- | --- |
-| admin | admin123 | 系统管理员 |
-| wh_admin | 123456 | 仓库管理员 |
-| planner | 123456 | 计划人员 |
-| logistics | 123456 | 物流人员 |
-| aftersale | 123456 | 售后人员 |
-| manager | 123456 | 管理层 |
-
-## 目录说明
-
-```text
-wms-alpha/
-├── backend/              # Spring Boot 后端
-├── frontend/             # Vue 3 前端
-├── sql/                  # 标准数据库初始化脚本
-├── database/             # 历史数据库脚本备份
-├── docs/                 # 产品、架构、数据库、API、演示文档
-├── mock/                 # 外部系统 Mock 样例数据
-├── scripts/              # 初始化、启动、构建、发布检查脚本
-├── screenshots/          # 演示截图占位目录
-├── docker-compose.yml    # MySQL 一键启动
-├── .env.example          # 环境变量模板
-└── README.md
-```
-
-## Codex / 开发者通过 Git 地址启动演示
-
-```bash
-git clone <your-git-url>
-cd wms-alpha
-
-# 启动数据库
-docker compose up -d mysql
-
-# 启动后端
-cd backend
-mvn spring-boot:run
-
-# 启动前端
-cd ../frontend
-npm install
-npm run dev
-```
-
-浏览器访问：
-
-```text
-http://localhost:5173
-```
 
 如果只需要前端 Mock 演示：
 
@@ -136,11 +81,45 @@ $env:VITE_USE_MOCK="true"
 npm run dev
 ```
 
-## Web 演示说明
+## 默认账号
 
-入库演示路径请查看 [DEMO_GUIDE.md](./DEMO_GUIDE.md)。
+| 账号 | 密码 | 角色 |
+| --- | --- | --- |
+| admin | admin123 | 系统管理员 |
+| wh_admin | 123456 | 仓库管理员 |
+| planner | 123456 | 计划人员 |
+| logistics | 123456 | 物流人员 |
+| aftersale | 123456 | 售后人员 |
+| manager | 123456 | 管理层 |
 
-部署到在线环境请查看 [DEPLOYMENT.md](./DEPLOYMENT.md)。
+## 演示说明
+
+- 入库演示路径请查看 [DEMO_GUIDE.md](./DEMO_GUIDE.md)。
+- V2.0 发布说明请查看 [docs/RELEASE_NOTE_V2.0.md](./docs/RELEASE_NOTE_V2.0.md)。
+- 部署到在线环境请查看 [DEPLOYMENT.md](./DEPLOYMENT.md)。
+
+## 目录说明
+
+```text
+wms-alpha/
+├── backend/              # Spring Boot 后端
+├── frontend/             # Vue 3 前端
+├── sql/                  # 标准数据库初始化脚本
+├── database/             # 历史数据库脚本备份
+├── docs/                 # 产品、架构、数据库、API、发布文档
+├── mock/                 # 外部系统 Mock 样例数据
+├── scripts/              # 初始化、启动、构建、发布检查脚本
+├── screenshots/          # 演示截图占位目录
+├── docker-compose.yml    # MySQL 一键启动
+├── .env.example          # 环境变量模板
+└── README.md
+```
+
+## 分支说明
+
+- `main`：主线分支。
+- `release/wms-pc-v1.5`：WMS PC V1.5 发布分支。
+- `release/wms-pc-v2.0`：WMS PC V2.0 发布分支，追加库存移动、库存盘点和库存查询快捷移动。
 
 ## 已知问题
 
@@ -148,8 +127,7 @@ npm run dev
 
 ## 后续计划
 
-- 出库闭环继续增强：分配、拣货、复核、发货、SAP 扣减、追溯回传
-- 接口中心增强：Mock 配置、失败重试、异常处理
-- 库存策略：FIFO、批次、库龄、冻结、补货
-- VMI、RMA、售后维修、盘点、打印标签
-- Excel 多 Sheet 正式导入导出替换当前 CSV Alpha 能力
+- PDA / 移动端作业。
+- 与真实 SAP / MES / 履约系统接口联调。
+- 库存策略、补货策略、波次拣货能力增强。
+- 权限与数据权限增强。
