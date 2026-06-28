@@ -1,0 +1,59 @@
+:root {
+  --wms-primary: #1677ff;
+  --wms-sidebar: #263445;
+  --wms-sidebar-active: #409eff;
+  --wms-bg: #f3f6fb;
+  --wms-border: #e5e7eb;
+  color: #1f2937;
+  font-family: Inter, "PingFang SC", "Microsoft YaHei", Arial, sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--wms-bg);
+}
+
+.page-card {
+  border-radius: 6px;
+}
+
+.toolbar {
+  display: flex;
+  gap: 8px;
+  margin: 12px 0;
+}
+
+.table-low-stock {
+  --el-table-tr-bg-color: #fff1f0;
+}
+
+.table-aged-stock {
+  --el-table-tr-bg-color: #fff7e6;
+}
+
+.muted {
+  color: #6b7280;
+}
+
+.kpi-card {
+  border: 1px solid var(--wms-border);
+  border-radius: 6px;
+  background: #fff;
+  padding: 16px;
+}
+
+.kpi-label {
+  color: #6b7280;
+  font-size: 13px;
+}
+
+.kpi-value {
+  margin-top: 8px;
+  font-size: 28px;
+  font-weight: 700;
+}
+

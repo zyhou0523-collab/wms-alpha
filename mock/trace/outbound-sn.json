@@ -1,0 +1,10 @@
+{
+  "requestId": "REQ-WMS-TRACE-202606110001",
+  "outboundOrderNo": "OUT202606110001",
+  "customerCode": "CUST-TESLA-001",
+  "serialNumbers": [
+    "SN-GT3-0001",
+    "SN-GT3-0002"
+  ]
+}
+

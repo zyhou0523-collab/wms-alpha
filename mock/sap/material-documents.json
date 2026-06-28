@@ -1,0 +1,14 @@
+{
+  "requestId": "REQ-WMS-SAP-202606110001",
+  "businessType": "OUTBOUND_POSTING",
+  "businessDocNo": "OUT202606110001",
+  "warehouseCode": "WH-HZ-CENTRAL",
+  "lines": [
+    {
+      "productCode": "GT3-30KD1R11001",
+      "qty": 5,
+      "movementType": "601"
+    }
+  ]
+}
+
