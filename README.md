@@ -1,22 +1,19 @@
 # WMS Alpha
 
-WMS Alpha 是面向新能源制造业成品仓储场景的 WMS PC 端原型系统，用于演示基础数据、仓库设置、入库闭环、出库 / 发货闭环、库存查询、SN 追溯、库存移动、库存盘点、数据驾驶舱和数据报表等核心能力。
+WMS Alpha 是面向新能源制造业成品仓储场景的 WMS PC 端原型系统，用于演示基础数据、仓库设置、入库闭环、出库 / 发货闭环、库存查询、SN 追溯、库存移动、库存盘点、数据驾驶舱、数据报表和系统管理等核心能力。
 
-当前工程已经整理为可发布到 GitHub / Gitee / GitLab 的标准全栈项目，便于后续通过 Git 地址拉取代码、启动本地 Web 页面并继续迭代。
+当前版本：**WMS PC V2.0.1**
 
-## 当前版本
+Git 仓库：https://github.com/zyhou0523-collab/wms-alpha.git
 
-WMS PC V2.0
+## V2.0.1 发布信息
 
-## V2.0 发布信息
-
-- 版本号：V2.0
-- 版本类型：PC 端完整阶段版本
-- 发布日期：2026-06-26
-- Git 仓库：https://github.com/zyhou0523-collab/wms-alpha.git
-- 发布分支：release/wms-pc-v2.0
-- 发布 Tag：WMS_PC_V2.0
-- 本版本重点：在 V1.5 基础上追加库存管理能力，支持库存移动、库存盘点和库存查询快捷移动。
+- 版本号：V2.0.1
+- 版本类型：PC 端系统管理增强版本
+- 发布日期：2026-06-29
+- 发布分支：`release/wms-pc-v2.0.1`
+- 发布 Tag：`WMS_PC_V2.0.1`
+- 版本说明：在 V2.0 基础上补齐系统管理模块，按照若依 RuoYi 风格完善用户、角色、菜单、部门、岗位、字典、参数、通知公告、操作日志、登录日志、字段管理和数据权限能力。
 
 ## 主要功能模块
 
@@ -24,12 +21,12 @@ WMS PC V2.0
 - 工作台：待办入口、库存查询、安全库存预警、业务单据入口。
 - 基础数据：产品主数据、客户 / 供应商 / 货主主数据。
 - 仓库设置：仓库、库区、库位、托盘码打印。
-- 入库管理：预期到货通知单、入库单主子结构、SN 采集 / 托盘箱码绑定、收货确认、取消收货、SAP 入库回传与重传、导入导出。
-- 出库 / 发货管理：发运订单、主子结构列表、库存分配、人工指定分配、拣货、发货、取消分配、取消拣货、取消发货、订单关闭、部分发运、分单处理、SAP 出库回传。
-- 库存管理：库存查询、SN 查询、多货主库存、库存移动、库存盘点、库存流水。
+- 入库管理：预期到货通知单、SN 采集 / 托盘箱码绑定、收货确认、取消收货、SAP 入库回传与重传、导入导出。
+- 出库 / 发货管理：发运订单、库存分配、人工指定分配、拣货、发货、取消分配、取消拣货、取消发货、订单关闭、部分发运、分单处理、SAP 出库回传。
+- 库存管理：库存查询、SN 查询、多货主库存、库存移动、库存查询快捷移动、库存盘点、库存流水。
 - 数据报表：进出存报表、入库日报表、出库日报表、标准库龄报表、分段库龄报表、出库 SN 报表、入库 SN 报表。
 - 接口中心：SAP Mock、MES Mock、履约系统 Mock、追溯系统 Mock、接口日志、失败重试。
-- 系统设置：用户和菜单相关配置。
+- 系统管理：用户管理、角色管理、菜单管理、部门管理、岗位管理、字典管理、参数设置、通知公告、操作日志、登录日志、字段管理、数据权限、接口日志。
 
 ## 技术栈
 
@@ -46,9 +43,12 @@ WMS PC V2.0
 ```bash
 git clone https://github.com/zyhou0523-collab/wms-alpha.git
 cd wms-alpha
-git checkout release/wms-pc-v2.0
+git checkout release/wms-pc-v2.0.1
 
 docker compose up -d mysql
+
+mysql -uroot -p123456 < sql/01_schema.sql
+mysql -uroot -p123456 wms_alpha < sql/02_seed_master_data.sql
 
 cd backend
 mvn spring-boot:run
@@ -64,7 +64,7 @@ npm run dev
 - 后端：http://localhost:8080
 - Swagger：http://localhost:8080/swagger-ui/index.html
 
-如果只需要前端 Mock 演示：
+如只需前端 Mock 演示：
 
 ```bash
 cd frontend
@@ -86,16 +86,18 @@ npm run dev
 | 账号 | 密码 | 角色 |
 | --- | --- | --- |
 | admin | admin123 | 系统管理员 |
-| wh_admin | 123456 | 仓库管理员 |
-| planner | 123456 | 计划人员 |
-| logistics | 123456 | 物流人员 |
-| aftersale | 123456 | 售后人员 |
-| manager | 123456 | 管理层 |
+| wh_admin | 123456 | WMS 主管 |
+| inbound01 | 123456 | 入库操作员 |
+| outbound01 | 123456 | 出库发运员 |
+| inventory01 | 123456 | 库存管理员 |
+| masterdata01 | 123456 | 主数据管理员 |
+| interface01 | 123456 | 接口管理员 |
+| owner3060 | 123456 | 货主查看员 |
 
 ## 演示说明
 
 - 入库演示路径请查看 [DEMO_GUIDE.md](./DEMO_GUIDE.md)。
-- V2.0 发布说明请查看 [docs/RELEASE_NOTE_V2.0.md](./docs/RELEASE_NOTE_V2.0.md)。
+- V2.0.1 发布说明请查看 [docs/RELEASE_NOTE_V2.0.1.md](./docs/RELEASE_NOTE_V2.0.1.md)。
 - 部署到在线环境请查看 [DEPLOYMENT.md](./DEPLOYMENT.md)。
 
 ## 目录说明
@@ -120,6 +122,7 @@ wms-alpha/
 - `main`：主线分支。
 - `release/wms-pc-v1.5`：WMS PC V1.5 发布分支。
 - `release/wms-pc-v2.0`：WMS PC V2.0 发布分支，追加库存移动、库存盘点和库存查询快捷移动。
+- `release/wms-pc-v2.0.1`：WMS PC V2.0.1 发布分支，追加系统管理增强能力。
 
 ## 已知问题
 
@@ -129,5 +132,5 @@ wms-alpha/
 
 - PDA / 移动端作业。
 - 与真实 SAP / MES / 履约系统接口联调。
-- 库存策略、补货策略、波次拣货能力增强。
-- 权限与数据权限增强。
+- 更细粒度按钮权限与数据权限拦截。
+- 审计日志和安全策略增强。

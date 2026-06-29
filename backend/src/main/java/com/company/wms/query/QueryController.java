@@ -526,6 +526,7 @@ public class QueryController {
   public ApiResponse<PageResult<Map<String, Object>>> users(
       @RequestParam(required = false) String username,
       @RequestParam(required = false) String roleCode,
+      @RequestParam(required = false) String deptName,
       @RequestParam(required = false) String status,
       @RequestParam(defaultValue = "1") int pageNum,
       @RequestParam(defaultValue = "10") int pageSize
@@ -533,15 +534,25 @@ public class QueryController {
     Map<String, Object> params = new HashMap<>();
     params.put("username", repo.like(username));
     params.put("roleCode", repo.like(roleCode));
+    params.put("deptName", repo.like(deptName));
     params.put("status", repo.like(status));
-    String where = """
-        WHERE (:username IS NULL OR username LIKE :username)
-          AND (:roleCode IS NULL OR role_code LIKE :roleCode)
-          AND (:status IS NULL OR status LIKE :status)
+    String from = """
+        FROM sys_user u
+        LEFT JOIN sys_dept d ON d.id = u.dept_id
+        LEFT JOIN sys_post p ON p.id = u.post_id
+        WHERE (:username IS NULL OR u.username LIKE :username OR u.display_name LIKE :username)
+          AND (:roleCode IS NULL OR u.role_code LIKE :roleCode OR u.role_name LIKE :roleCode)
+          AND (:deptName IS NULL OR d.dept_name LIKE :deptName)
+          AND (:status IS NULL OR u.status LIKE :status)
         """;
     return ApiResponse.ok(repo.page(
-        "SELECT id, username, display_name, role_code, role_name, warehouse_scope, status, created_at, updated_at FROM sys_user " + where + " ORDER BY id DESC",
-        "SELECT COUNT(*) FROM sys_user " + where,
+        """
+        SELECT u.id, u.username, u.display_name, u.nickname, u.dept_id, d.dept_name,
+               u.post_id, p.post_name, u.mobile, u.email, u.role_code, u.role_name,
+               u.warehouse_scope, u.owner_scope, u.default_warehouse_code,
+               u.default_owner_code, u.remark, u.status, u.created_at, u.updated_at
+        """ + from + " ORDER BY u.id DESC",
+        "SELECT COUNT(*) " + from,
         params,
         pageNum,
         pageSize

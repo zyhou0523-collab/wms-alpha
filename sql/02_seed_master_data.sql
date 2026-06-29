@@ -33,16 +33,212 @@ TRUNCATE TABLE wms_warehouse;
 TRUNCATE TABLE md_supplier;
 TRUNCATE TABLE md_customer;
 TRUNCATE TABLE md_product;
+TRUNCATE TABLE sys_user_owner;
+TRUNCATE TABLE sys_user_warehouse;
+TRUNCATE TABLE sys_role_owner;
+TRUNCATE TABLE sys_role_warehouse;
+TRUNCATE TABLE sys_user_role;
+TRUNCATE TABLE sys_role_menu;
+TRUNCATE TABLE sys_data_scope;
+TRUNCATE TABLE sys_field_config;
+TRUNCATE TABLE sys_login_log;
+TRUNCATE TABLE sys_notice;
+TRUNCATE TABLE sys_config;
+TRUNCATE TABLE sys_dict_data;
+TRUNCATE TABLE sys_dict_type;
+TRUNCATE TABLE sys_menu;
+TRUNCATE TABLE sys_post;
+TRUNCATE TABLE sys_dept;
+TRUNCATE TABLE sys_role;
 TRUNCATE TABLE sys_user;
 SET FOREIGN_KEY_CHECKS = 1;
 
-INSERT INTO sys_user (username, password_hash, display_name, role_code, role_name, warehouse_scope, status) VALUES
-('admin', 'admin123', '绯荤粺绠＄悊鍛?, 'ADMIN', '绯荤粺绠＄悊鍛?, '*', 'ACTIVE'),
-('wh_admin', '123456', '浠撳簱绠＄悊鍛?, 'WAREHOUSE_ADMIN', '浠撳簱绠＄悊鍛?, 'WH-HZ-CENTRAL,WH-SH-REGION', 'ACTIVE'),
-('planner', '123456', '璁″垝浜哄憳', 'PLANNER', '璁″垝浜哄憳', '*', 'ACTIVE'),
-('logistics', '123456', '鐗╂祦浜哄憳', 'LOGISTICS', '鐗╂祦浜哄憳', 'WH-HZ-CENTRAL,WH-SH-REGION', 'ACTIVE'),
-('aftersale', '123456', '鍞悗浜哄憳', 'AFTERSALE', '鍞悗浜哄憳', 'WH-SZ-AFTERSALE', 'ACTIVE'),
-('manager', '123456', '绠＄悊灞?, 'MANAGER', '绠＄悊灞?, '*', 'ACTIVE');
+INSERT INTO sys_dept (id, parent_id, dept_code, dept_name, leader, phone, email, order_num, status) VALUES
+(1, 0, 'HQ', '集团总部', 'Admin User', '0571-100000', 'hq@example.com', 1, 'ACTIVE'),
+(2, 1, 'OPS', '供应链运营部', '王经理', '0571-100001', 'ops@example.com', 2, 'ACTIVE'),
+(3, 1, 'INBOUND', '入库作业组', '李主管', '0571-100002', 'inbound@example.com', 3, 'ACTIVE'),
+(4, 1, 'OUTBOUND', '出库发运组', '赵主管', '0571-100003', 'outbound@example.com', 4, 'ACTIVE'),
+(5, 1, 'INVENTORY', '库存管理组', '陈主管', '0571-100004', 'inventory@example.com', 5, 'ACTIVE'),
+(6, 1, 'IT', '信息系统部', '系统管理员', '0571-100005', 'it@example.com', 6, 'ACTIVE');
+
+INSERT INTO sys_post (id, post_code, post_name, post_sort, status, remark) VALUES
+(1, 'SYS_ADMIN', '系统管理员', 1, 'ACTIVE', '系统配置和权限维护'),
+(2, 'WMS_MANAGER', 'WMS 主管', 2, 'ACTIVE', '仓储业务管理'),
+(3, 'INBOUND_OPERATOR', '入库操作员', 3, 'ACTIVE', 'SN 采集、收货、SAP 入库回传'),
+(4, 'OUTBOUND_OPERATOR', '出库操作员', 4, 'ACTIVE', '分配、拣货、发货、SAP 出库回传'),
+(5, 'INVENTORY_OPERATOR', '库存操作员', 5, 'ACTIVE', '库存查询、移动、盘点'),
+(6, 'MASTER_DATA_ADMIN', '主数据维护员', 6, 'ACTIVE', '产品、客户、仓库主数据维护');
+
+INSERT INTO sys_role (id, role_code, role_name, role_sort, data_scope, warehouse_scope, owner_scope, status, remark) VALUES
+(1, 'ADMIN', '系统管理员', 1, 'ALL', '*', '*', 'ACTIVE', '拥有全部系统菜单和数据权限'),
+(2, 'WMS_MANAGER', 'WMS 主管', 2, 'ALL_WAREHOUSE', '*', '*', 'ACTIVE', '查看驾驶舱、工作台、报表和全部 WMS 单据'),
+(3, 'INBOUND_OPERATOR', '入库操作员', 3, 'CUSTOM', 'WH-HZ-CENTRAL,WH-SH-REGION,WH-SUP-CATL-VMI', '1000,3060', 'ACTIVE', '处理预期到货、SN 采集、收货和入库回传'),
+(4, 'OUTBOUND_OPERATOR', '出库发运员', 4, 'CUSTOM', 'WH-HZ-CENTRAL,WH-SH-REGION,WH-SZ-AFTERSALE', '1000,3060', 'ACTIVE', '处理发运订单、分配、拣货和发货'),
+(5, 'INVENTORY_ADMIN', '库存管理员', 5, 'CUSTOM', 'WH-HZ-CENTRAL,WH-SH-REGION,WH-GZ-3PL,WH-SZ-AFTERSALE', '1000,3060', 'ACTIVE', '维护库存移动、盘点和库存查询'),
+(6, 'MASTER_DATA_ADMIN', '主数据管理员', 6, 'ALL', '*', '*', 'ACTIVE', '维护产品、客户、仓库、库位等基础数据'),
+(7, 'INTERFACE_ADMIN', '接口管理员', 7, 'ALL', '*', '*', 'ACTIVE', '维护 Mock 配置并处理接口失败重试'),
+(8, 'OWNER_VIEWER', '货主查看员', 8, 'OWNER', 'WH-HZ-CENTRAL,WH-SH-REGION', '3060', 'ACTIVE', '只查看指定货主库存、单据和报表');
+
+INSERT INTO sys_user (
+  id, username, password_hash, display_name, nickname, dept_id, post_id, mobile, email,
+  role_code, role_name, warehouse_scope, owner_scope, default_warehouse_code, default_owner_code, remark, status
+) VALUES
+(1, 'admin', 'admin123', '系统管理员', 'Admin', 6, 1, '13800001000', 'admin@example.com', 'ADMIN', '系统管理员', '*', '*', 'WH-HZ-CENTRAL', '1000', '默认超级管理员', 'ACTIVE'),
+(2, 'wh_admin', '123456', '仓库主管', 'WMS 主管', 2, 2, '13800001001', 'whadmin@example.com', 'WMS_MANAGER', 'WMS 主管', '*', '*', 'WH-HZ-CENTRAL', '1000', '仓储运营主管', 'ACTIVE'),
+(3, 'inbound01', '123456', '入库作业员', '入库一号', 3, 3, '13800001002', 'inbound01@example.com', 'INBOUND_OPERATOR', '入库操作员', 'WH-HZ-CENTRAL,WH-SH-REGION,WH-SUP-CATL-VMI', '1000,3060', 'WH-HZ-CENTRAL', '3060', '负责 SN 采集与收货', 'ACTIVE'),
+(4, 'outbound01', '123456', '出库发运员', '出库一号', 4, 4, '13800001003', 'outbound01@example.com', 'OUTBOUND_OPERATOR', '出库发运员', 'WH-HZ-CENTRAL,WH-SH-REGION,WH-SZ-AFTERSALE', '1000,3060', 'WH-HZ-CENTRAL', '3060', '负责分配、拣货和发货', 'ACTIVE'),
+(5, 'inventory01', '123456', '库存管理员', '库存一号', 5, 5, '13800001004', 'inventory01@example.com', 'INVENTORY_ADMIN', '库存管理员', 'WH-HZ-CENTRAL,WH-SH-REGION,WH-GZ-3PL,WH-SZ-AFTERSALE', '1000,3060', 'WH-HZ-CENTRAL', '1000', '负责移动和盘点', 'ACTIVE'),
+(6, 'masterdata01', '123456', '主数据维护员', '主数据一号', 6, 6, '13800001005', 'mdm@example.com', 'MASTER_DATA_ADMIN', '主数据管理员', '*', '*', 'WH-HZ-CENTRAL', '1000', '负责基础资料维护', 'ACTIVE'),
+(7, 'interface01', '123456', '接口管理员', '接口一号', 6, 1, '13800001006', 'interface@example.com', 'INTERFACE_ADMIN', '接口管理员', '*', '*', 'WH-HZ-CENTRAL', '1000', '负责接口日志和 Mock 配置', 'ACTIVE'),
+(8, 'owner3060', '123456', '货主查看员', '货主 3060', 2, 2, '13800001007', 'owner3060@example.com', 'OWNER_VIEWER', '货主查看员', 'WH-HZ-CENTRAL,WH-SH-REGION', '3060', 'WH-HZ-CENTRAL', '3060', '演示货主维度查看权限', 'ACTIVE');
+
+INSERT INTO sys_menu (id, parent_id, menu_name, menu_type, path, component, perms, icon, order_num, visible, status, remark) VALUES
+(1, 0, '数据驾驶舱', 'DIR', NULL, NULL, NULL, 'Monitor', 1, 1, 'ACTIVE', ''),
+(101, 1, '全局库存看板', 'MENU', '/dashboard', 'dashboard/index', 'dashboard:view', 'DataBoard', 1, 1, 'ACTIVE', ''),
+(2, 0, '工作台', 'DIR', NULL, NULL, NULL, 'HomeFilled', 2, 1, 'ACTIVE', ''),
+(201, 2, '我的工作台', 'MENU', '/dashboard/workbench', 'workbench/index', 'workbench:view', 'HomeFilled', 1, 1, 'ACTIVE', ''),
+(3, 0, '基础数据', 'DIR', NULL, NULL, NULL, 'Collection', 3, 1, 'ACTIVE', ''),
+(301, 3, '产品主数据', 'MENU', '/masterdata/products', 'masterdata/ProductPage', 'masterdata:product:list', 'Goods', 1, 1, 'ACTIVE', ''),
+(302, 3, '客户主数据', 'MENU', '/masterdata/customers', 'masterdata/CustomerPage', 'masterdata:customer:list', 'User', 2, 1, 'ACTIVE', ''),
+(4, 0, '仓库设置', 'DIR', NULL, NULL, NULL, 'OfficeBuilding', 4, 1, 'ACTIVE', ''),
+(401, 4, '仓库管理', 'MENU', '/warehouse/warehouses', 'warehouse/WarehousePage', 'warehouse:list', 'OfficeBuilding', 1, 1, 'ACTIVE', ''),
+(402, 4, '库位管理', 'MENU', '/warehouse/locations', 'warehouse/LocationPage', 'warehouse:location:list', 'Location', 2, 1, 'ACTIVE', ''),
+(5, 0, '入库管理', 'DIR', NULL, NULL, NULL, 'Download', 5, 1, 'ACTIVE', ''),
+(501, 5, '预期到货通知单', 'MENU', '/inbound/arrival-notices', 'inbound/InboundOrderPage', 'inbound:order:list', 'Document', 1, 1, 'ACTIVE', ''),
+(502, 5, 'SN 绑定', 'MENU', '/inbound/sn-bindings', 'inbound/SnBindingPage', 'inbound:sn:list', 'Tickets', 2, 1, 'ACTIVE', ''),
+(6, 0, '出库管理', 'DIR', NULL, NULL, NULL, 'Upload', 6, 1, 'ACTIVE', ''),
+(601, 6, '发运订单', 'MENU', '/outbound/shipping-orders', 'outbound/OutboundOrderPage', 'outbound:shipping:list', 'Van', 1, 1, 'ACTIVE', ''),
+(7, 0, '库存管理', 'DIR', NULL, NULL, NULL, 'Box', 7, 1, 'ACTIVE', ''),
+(701, 7, '库存查询', 'MENU', '/inventory/list', 'inventory/InventoryPage', 'inventory:list', 'Box', 1, 1, 'ACTIVE', ''),
+(702, 7, 'SN 查询', 'MENU', '/inventory/sn', 'inventory/SnPage', 'inventory:sn:list', 'Tickets', 2, 1, 'ACTIVE', ''),
+(703, 7, '库存盘点', 'MENU', '/inventory/count', 'inventory/InventoryCountPage', 'inventory:count:list', 'Checked', 3, 1, 'ACTIVE', ''),
+(704, 7, '库存移动', 'MENU', '/inventory/move', 'inventory/InventoryMovePage', 'inventory:move:list', 'Switch', 4, 1, 'ACTIVE', ''),
+(8, 0, '报表中心', 'DIR', NULL, NULL, NULL, 'DataAnalysis', 8, 1, 'ACTIVE', ''),
+(801, 8, '进出存报表', 'MENU', '/reports/inout-stock', 'reports/InoutStockReport', 'reports:inout:list', 'TrendCharts', 1, 1, 'ACTIVE', ''),
+(802, 8, '入库日报表', 'MENU', '/reports/inbound-daily', 'reports/InboundDailyReport', 'reports:inbound:list', 'DataLine', 2, 1, 'ACTIVE', ''),
+(803, 8, '出库日报表', 'MENU', '/reports/outbound-daily', 'reports/OutboundDailyReport', 'reports:outbound:list', 'DataLine', 3, 1, 'ACTIVE', ''),
+(804, 8, '标准库龄报表', 'MENU', '/reports/standard-aging', 'reports/StandardAgingReport', 'reports:aging:list', 'Timer', 4, 1, 'ACTIVE', ''),
+(805, 8, '分段库龄报表', 'MENU', '/reports/segment-aging', 'reports/SegmentAgingReport', 'reports:aging:segment', 'PieChart', 5, 1, 'ACTIVE', ''),
+(806, 8, '出库 SN 报表', 'MENU', '/reports/outbound-sn', 'reports/OutboundSnReport', 'reports:outbound-sn:list', 'Tickets', 6, 1, 'ACTIVE', ''),
+(807, 8, '入库 SN 报表', 'MENU', '/reports/inbound-sn', 'reports/InboundSnReport', 'reports:inbound-sn:list', 'Tickets', 7, 1, 'ACTIVE', ''),
+(9, 0, '接口中心', 'DIR', NULL, NULL, NULL, 'Connection', 9, 1, 'ACTIVE', ''),
+(901, 9, '接口日志', 'MENU', '/interface/logs', 'interfacecenter/InterfaceLogPage', 'interface:log:list', 'Connection', 1, 1, 'ACTIVE', ''),
+(10, 0, '系统管理', 'DIR', NULL, NULL, NULL, 'Setting', 10, 1, 'ACTIVE', ''),
+(1001, 10, '用户管理', 'MENU', '/system/users', 'system/SystemAdminPage', 'system:user:list', 'User', 1, 1, 'ACTIVE', ''),
+(1002, 10, '角色管理', 'MENU', '/system/roles', 'system/SystemAdminPage', 'system:role:list', 'Avatar', 2, 1, 'ACTIVE', ''),
+(1003, 10, '菜单管理', 'MENU', '/system/menus', 'system/SystemAdminPage', 'system:menu:list', 'Menu', 3, 1, 'ACTIVE', ''),
+(1004, 10, '部门管理', 'MENU', '/system/depts', 'system/SystemAdminPage', 'system:dept:list', 'OfficeBuilding', 4, 1, 'ACTIVE', ''),
+(1005, 10, '岗位管理', 'MENU', '/system/posts', 'system/SystemAdminPage', 'system:post:list', 'Postcard', 5, 1, 'ACTIVE', ''),
+(1006, 10, '字典管理', 'MENU', '/system/dict', 'system/SystemAdminPage', 'system:dict:list', 'Collection', 6, 1, 'ACTIVE', ''),
+(1007, 10, '参数设置', 'MENU', '/system/config', 'system/SystemAdminPage', 'system:config:list', 'Tools', 7, 1, 'ACTIVE', ''),
+(1008, 10, '通知公告', 'MENU', '/system/notice', 'system/SystemAdminPage', 'system:notice:list', 'Bell', 8, 1, 'ACTIVE', ''),
+(1009, 10, '操作日志', 'MENU', '/system/operlog', 'system/SystemAdminPage', 'system:operlog:list', 'Memo', 9, 1, 'ACTIVE', ''),
+(1010, 10, '登录日志', 'MENU', '/system/loginlog', 'system/SystemAdminPage', 'system:loginlog:list', 'Monitor', 10, 1, 'ACTIVE', ''),
+(1011, 10, '字段管理', 'MENU', '/system/field', 'system/SystemAdminPage', 'system:field:list', 'Grid', 11, 1, 'ACTIVE', ''),
+(1012, 10, '数据权限', 'MENU', '/system/data-scope', 'system/SystemAdminPage', 'system:data-scope:list', 'Lock', 12, 1, 'ACTIVE', ''),
+(1013, 10, '接口日志', 'MENU', '/system/interface-log', 'system/SystemAdminPage', 'system:interface-log:list', 'Connection', 13, 1, 'ACTIVE', ''),
+(1101, 1001, '用户新增', 'BUTTON', NULL, NULL, 'system:user:add', NULL, 1, 1, 'ACTIVE', ''),
+(1102, 1001, '用户编辑', 'BUTTON', NULL, NULL, 'system:user:edit', NULL, 2, 1, 'ACTIVE', ''),
+(1103, 1001, '用户删除', 'BUTTON', NULL, NULL, 'system:user:remove', NULL, 3, 1, 'ACTIVE', ''),
+(1104, 1002, '角色分配菜单', 'BUTTON', NULL, NULL, 'system:role:menu', NULL, 1, 1, 'ACTIVE', ''),
+(1105, 1012, '数据权限维护', 'BUTTON', NULL, NULL, 'system:data-scope:edit', NULL, 1, 1, 'ACTIVE', '');
+
+INSERT INTO sys_user_role (user_id, role_id) VALUES
+(1, 1), (2, 2), (3, 3), (4, 4), (5, 5), (6, 6), (7, 7), (8, 8);
+
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT 1, id FROM sys_menu;
+INSERT INTO sys_role_menu (role_id, menu_id)
+SELECT 2, id FROM sys_menu WHERE id NOT BETWEEN 1001 AND 1105;
+INSERT INTO sys_role_menu (role_id, menu_id) VALUES
+(3, 2), (3, 201), (3, 5), (3, 501), (3, 502), (3, 7), (3, 701), (3, 702), (3, 9), (3, 901),
+(4, 2), (4, 201), (4, 6), (4, 601), (4, 7), (4, 701), (4, 702), (4, 9), (4, 901),
+(5, 2), (5, 201), (5, 7), (5, 701), (5, 702), (5, 703), (5, 704), (5, 8), (5, 801), (5, 804), (5, 805),
+(6, 2), (6, 201), (6, 3), (6, 301), (6, 302), (6, 4), (6, 401), (6, 402),
+(7, 2), (7, 201), (7, 9), (7, 901), (7, 10), (7, 1013),
+(8, 1), (8, 101), (8, 2), (8, 201), (8, 7), (8, 701), (8, 702), (8, 8), (8, 801), (8, 806), (8, 807);
+
+INSERT INTO sys_role_warehouse (role_id, warehouse_code) VALUES
+(3, 'WH-HZ-CENTRAL'), (3, 'WH-SH-REGION'), (3, 'WH-SUP-CATL-VMI'),
+(4, 'WH-HZ-CENTRAL'), (4, 'WH-SH-REGION'), (4, 'WH-SZ-AFTERSALE'),
+(5, 'WH-HZ-CENTRAL'), (5, 'WH-SH-REGION'), (5, 'WH-GZ-3PL'), (5, 'WH-SZ-AFTERSALE'),
+(8, 'WH-HZ-CENTRAL'), (8, 'WH-SH-REGION');
+
+INSERT INTO sys_role_owner (role_id, owner_code) VALUES
+(3, '1000'), (3, '3060'), (4, '1000'), (4, '3060'), (5, '1000'), (5, '3060'), (8, '3060');
+
+INSERT INTO sys_user_warehouse (user_id, warehouse_code) VALUES
+(3, 'WH-HZ-CENTRAL'), (3, 'WH-SH-REGION'), (3, 'WH-SUP-CATL-VMI'),
+(4, 'WH-HZ-CENTRAL'), (4, 'WH-SH-REGION'), (4, 'WH-SZ-AFTERSALE'),
+(5, 'WH-HZ-CENTRAL'), (5, 'WH-SH-REGION'), (5, 'WH-GZ-3PL'), (5, 'WH-SZ-AFTERSALE'),
+(8, 'WH-HZ-CENTRAL'), (8, 'WH-SH-REGION');
+
+INSERT INTO sys_user_owner (user_id, owner_code) VALUES
+(3, '1000'), (3, '3060'), (4, '1000'), (4, '3060'), (5, '1000'), (5, '3060'), (8, '3060');
+
+INSERT INTO sys_dict_type (dict_name, dict_type, status, remark) VALUES
+('系统状态', 'sys_normal_disable', 'ACTIVE', '启用/停用'),
+('菜单类型', 'sys_menu_type', 'ACTIVE', '目录/菜单/按钮'),
+('WMS 入库订单类型', 'wms_inbound_type', 'ACTIVE', '生产/备货/RMA/调拨/VMI'),
+('WMS 出库订单类型', 'wms_outbound_type', 'ACTIVE', '销售/调拨/售后'),
+('SAP 回传状态', 'wms_sap_post_status', 'ACTIVE', '未回传/成功/失败');
+
+INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, dict_sort, list_class, is_default, status, remark) VALUES
+('sys_normal_disable', '启用', 'ACTIVE', 1, 'success', 1, 'ACTIVE', ''),
+('sys_normal_disable', '停用', 'DISABLED', 2, 'danger', 0, 'ACTIVE', ''),
+('sys_menu_type', '目录', 'DIR', 1, 'primary', 0, 'ACTIVE', ''),
+('sys_menu_type', '菜单', 'MENU', 2, 'success', 1, 'ACTIVE', ''),
+('sys_menu_type', '按钮', 'BUTTON', 3, 'warning', 0, 'ACTIVE', ''),
+('wms_inbound_type', '生产入库', 'PRODUCTION', 1, 'primary', 1, 'ACTIVE', ''),
+('wms_inbound_type', '备货入库', 'STOCKING', 2, 'success', 0, 'ACTIVE', ''),
+('wms_inbound_type', '售后 RMA 入库', 'RMA', 3, 'warning', 0, 'ACTIVE', ''),
+('wms_inbound_type', '调拨入库', 'TRANSFER', 4, 'info', 0, 'ACTIVE', ''),
+('wms_outbound_type', '销售出库', 'SALES', 1, 'primary', 1, 'ACTIVE', ''),
+('wms_outbound_type', '调拨出库', 'TRANSFER', 2, 'success', 0, 'ACTIVE', ''),
+('wms_outbound_type', '售后出库', 'AFTERSALE', 3, 'warning', 0, 'ACTIVE', ''),
+('wms_sap_post_status', '未回传', 'NOT_POSTED', 1, 'info', 1, 'ACTIVE', ''),
+('wms_sap_post_status', '回传成功', 'SUCCESS', 2, 'success', 0, 'ACTIVE', ''),
+('wms_sap_post_status', '回传失败', 'FAILED', 3, 'danger', 0, 'ACTIVE', '');
+
+INSERT INTO sys_config (config_name, config_key, config_value, config_type, status, remark) VALUES
+('系统名称', 'wms.system.name', 'WMS Alpha', 'Y', 'ACTIVE', '页面标题和登录标识'),
+('默认仓库', 'wms.default.warehouse', 'WH-HZ-CENTRAL', 'Y', '用户未配置时的默认仓库'),
+('默认货主', 'wms.default.owner', '1000', 'Y', '用户未配置时的默认货主'),
+('SN 扫码去重', 'wms.sn.scan.dedup', 'true', 'Y', 'SN 采集和拣货扫码重复校验'),
+('SAP Mock 开关', 'wms.mock.sap.enabled', 'true', 'Y', 'SAP 入库/出库 Mock 回传');
+
+INSERT INTO sys_notice (notice_title, notice_type, notice_content, status, created_by) VALUES
+('WMS PC V2.0 演示版本发布', 'NOTICE', '当前版本支持入库、出库、库存移动、盘点、驾驶舱、报表和系统管理演示。', 'PUBLISHED', 'admin'),
+('盘点作业提醒', 'NOTICE', '本周演示库存盘点请使用 WH-HZ-CENTRAL 仓库数据。', 'PUBLISHED', 'inventory01'),
+('SAP Mock 维护窗口', 'NOTICE', '接口 Mock 可通过接口中心和系统管理接口日志查看失败与重试记录。', 'DRAFT', 'interface01');
+
+INSERT INTO sys_login_log (username, ipaddr, login_location, browser, os, status, message, login_time) VALUES
+('admin', '127.0.0.1', '本机演示环境', 'Chrome', 'Windows', 'SUCCESS', '登录成功', DATE_SUB(NOW(), INTERVAL 20 MINUTE)),
+('inbound01', '127.0.0.1', '本机演示环境', 'Chrome', 'Windows', 'SUCCESS', '登录成功', DATE_SUB(NOW(), INTERVAL 1 HOUR)),
+('outbound01', '127.0.0.1', '本机演示环境', 'Chrome', 'Windows', 'SUCCESS', '登录成功', DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+('owner3060', '127.0.0.1', '本机演示环境', 'Edge', 'Windows', 'FAILED', '密码错误', DATE_SUB(NOW(), INTERVAL 3 HOUR));
+
+INSERT INTO sys_field_config (page_code, page_name, field_code, field_name, field_type, visible, required, editable, order_num, role_codes, remark) VALUES
+('inbound.arrival', '预期到货通知单', 'owner_code', '货主', 'SELECT', 1, 1, 1, 10, 'ADMIN,WMS_MANAGER,INBOUND_OPERATOR', '多货主入库必填'),
+('inbound.arrival', '预期到货通知单', 'sap_post_status', '回传 SAP 状态', 'SELECT', 1, 0, 0, 20, 'ADMIN,WMS_MANAGER,INBOUND_OPERATOR,INTERFACE_ADMIN', ''),
+('outbound.shipping', '发运订单', 'owner_code', '货主', 'SELECT', 1, 1, 1, 10, 'ADMIN,WMS_MANAGER,OUTBOUND_OPERATOR', '多货主出库必填'),
+('outbound.shipping', '发运订单', 'carrier_name', '承运商', 'TEXT', 1, 0, 1, 20, 'ADMIN,WMS_MANAGER,OUTBOUND_OPERATOR', ''),
+('inventory.list', '库存查询', 'owner_code', '货主', 'SELECT', 1, 0, 0, 10, 'ADMIN,WMS_MANAGER,INVENTORY_ADMIN,OWNER_VIEWER', ''),
+('inventory.sn', 'SN 查询', 'owner_code', '货主', 'SELECT', 1, 0, 0, 10, 'ADMIN,WMS_MANAGER,INVENTORY_ADMIN,OWNER_VIEWER', ''),
+('reports.inout', '进出存报表', 'owner_code', '货主', 'SELECT', 1, 0, 0, 10, 'ADMIN,WMS_MANAGER,OWNER_VIEWER', ''),
+('system.users', '用户管理', 'warehouse_scope', '仓库范围', 'TEXT', 1, 0, 1, 30, 'ADMIN', '系统管理员维护');
+
+INSERT INTO sys_data_scope (scope_code, scope_name, role_code, role_name, scope_type, dept_codes, warehouse_codes, owner_codes, status, remark) VALUES
+('DS-ADMIN-ALL', '系统管理员全量权限', 'ADMIN', '系统管理员', 'ALL', '*', '*', '*', 'ACTIVE', '全菜单全数据'),
+('DS-INBOUND-HZ-SH', '入库操作仓库与货主范围', 'INBOUND_OPERATOR', '入库操作员', 'WAREHOUSE_OWNER', 'INBOUND', 'WH-HZ-CENTRAL,WH-SH-REGION,WH-SUP-CATL-VMI', '1000,3060', 'ACTIVE', '限制入库相关作业数据'),
+('DS-OUTBOUND-HZ-SH', '出库发运仓库与货主范围', 'OUTBOUND_OPERATOR', '出库发运员', 'WAREHOUSE_OWNER', 'OUTBOUND', 'WH-HZ-CENTRAL,WH-SH-REGION,WH-SZ-AFTERSALE', '1000,3060', 'ACTIVE', '限制出库相关作业数据'),
+('DS-INVENTORY-CN', '库存管理员仓库范围', 'INVENTORY_ADMIN', '库存管理员', 'WAREHOUSE_OWNER', 'INVENTORY', 'WH-HZ-CENTRAL,WH-SH-REGION,WH-GZ-3PL,WH-SZ-AFTERSALE', '1000,3060', 'ACTIVE', '限制库存移动与盘点范围'),
+('DS-OWNER-3060', '货主 3060 查看权限', 'OWNER_VIEWER', '货主查看员', 'OWNER', 'OPS', 'WH-HZ-CENTRAL,WH-SH-REGION', '3060', 'ACTIVE', '只查看 3060 货主');
+
+INSERT INTO wms_operation_log (module, business_doc_no, action, operator, result, message, created_at) VALUES
+('SYSTEM', 'admin', 'CREATE_USER', 'admin', 'SUCCESS', '初始化系统管理员', DATE_SUB(NOW(), INTERVAL 4 HOUR)),
+('SYSTEM', 'OUTBOUND_OPERATOR', 'ASSIGN_ROLE_MENU', 'admin', 'SUCCESS', '配置出库角色菜单权限', DATE_SUB(NOW(), INTERVAL 3 HOUR)),
+('SYSTEM', 'DS-OWNER-3060', 'UPDATE_DATA_SCOPE', 'admin', 'SUCCESS', '配置货主 3060 查看权限', DATE_SUB(NOW(), INTERVAL 2 HOUR));
 
 INSERT INTO md_product (product_code, product_name, category, spec_model, unit, sn_managed, battery_flag, shelf_life_days, safety_stock, aging_threshold_days, status) VALUES
 ('GT3-30KD1R11001', '宸ュ晢涓氬偍鑳界數姹犲寘', '鎴愬搧', 'GT3-30K-D1R1', 'PCS', 1, 1, 730, 20, 180, 'ACTIVE'),

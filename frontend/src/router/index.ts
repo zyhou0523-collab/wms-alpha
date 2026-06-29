@@ -17,7 +17,7 @@ import InboundOrderDetail from '../views/inbound/InboundOrderDetail.vue'
 import SnBindingPage from '../views/inbound/SnBindingPage.vue'
 import OutboundOrderPage from '../views/outbound/OutboundOrderPage.vue'
 import InterfaceLogPage from '../views/interfacecenter/InterfaceLogPage.vue'
-import UserPage from '../views/system/UserPage.vue'
+import SystemAdminPage from '../views/system/SystemAdminPage.vue'
 import InoutStockReport from '../views/reports/InoutStockReport.vue'
 import InboundDailyReport from '../views/reports/InboundDailyReport.vue'
 import OutboundDailyReport from '../views/reports/OutboundDailyReport.vue'
@@ -63,7 +63,24 @@ const routes: RouteRecordRaw[] = [
       { path: 'reports/outbound-sn', component: OutboundSnReport, meta: { title: '出库 SN 报表' } },
       { path: 'reports/inbound-sn', component: InboundSnReport, meta: { title: '入库 SN 报表' } },
       { path: 'interface/logs', component: InterfaceLogPage, meta: { title: '接口日志' } },
-      { path: 'system/users', component: UserPage, meta: { title: '系统用户' } }
+      { path: 'system/user', redirect: '/system/users' },
+      { path: 'system/users', component: SystemAdminPage, meta: { title: '用户管理', systemPage: 'users' } },
+      { path: 'system/role', redirect: '/system/roles' },
+      { path: 'system/roles', component: SystemAdminPage, meta: { title: '角色管理', systemPage: 'roles' } },
+      { path: 'system/menu', redirect: '/system/menus' },
+      { path: 'system/menus', component: SystemAdminPage, meta: { title: '菜单管理', systemPage: 'menus' } },
+      { path: 'system/dept', redirect: '/system/depts' },
+      { path: 'system/depts', component: SystemAdminPage, meta: { title: '部门管理', systemPage: 'depts' } },
+      { path: 'system/post', redirect: '/system/posts' },
+      { path: 'system/posts', component: SystemAdminPage, meta: { title: '岗位管理', systemPage: 'posts' } },
+      { path: 'system/dict', component: SystemAdminPage, meta: { title: '字典管理', systemPage: 'dict' } },
+      { path: 'system/config', component: SystemAdminPage, meta: { title: '参数设置', systemPage: 'config' } },
+      { path: 'system/notice', component: SystemAdminPage, meta: { title: '通知公告', systemPage: 'notice' } },
+      { path: 'system/operlog', component: SystemAdminPage, meta: { title: '操作日志', systemPage: 'operlog' } },
+      { path: 'system/loginlog', component: SystemAdminPage, meta: { title: '登录日志', systemPage: 'loginlog' } },
+      { path: 'system/field', component: SystemAdminPage, meta: { title: '字段管理', systemPage: 'field' } },
+      { path: 'system/data-scope', component: SystemAdminPage, meta: { title: '数据权限', systemPage: 'data-scope' } },
+      { path: 'system/interface-log', component: SystemAdminPage, meta: { title: '接口日志', systemPage: 'interface-log' } }
     ]
   }
 ]

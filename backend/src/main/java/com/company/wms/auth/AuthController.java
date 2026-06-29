@@ -43,7 +43,12 @@ public class AuthController {
   public ApiResponse<Map<String, Object>> me(@RequestHeader(value = "Authorization", required = false) String authorization) {
     String username = usernameFromToken(authorization);
     Map<String, Object> user = repo.one(
-        "SELECT id, username, display_name, role_code, role_name, warehouse_scope, status FROM sys_user WHERE username = :username",
+        """
+        SELECT id, username, display_name, role_code, role_name, warehouse_scope, owner_scope,
+               default_warehouse_code, default_owner_code, status
+        FROM sys_user
+        WHERE username = :username
+        """,
         Map.of("username", username)
     );
     return ApiResponse.ok(user == null ? Map.of("username", "admin", "display_name", "系统管理员") : user);
@@ -91,8 +96,20 @@ public class AuthController {
         menu("interface", "接口中心", "Connection", null,
             child("interfaceLogs", "接口日志", "/interface/logs")
         ),
-        menu("system", "系统设置", "Setting", null,
-            child("users", "系统用户", "/system/users")
+        menu("system", "系统管理", "Setting", null,
+            child("users", "用户管理", "/system/users"),
+            child("roles", "角色管理", "/system/roles"),
+            child("menus", "菜单管理", "/system/menus"),
+            child("depts", "部门管理", "/system/depts"),
+            child("posts", "岗位管理", "/system/posts"),
+            child("dict", "字典管理", "/system/dict"),
+            child("configs", "参数设置", "/system/config"),
+            child("notices", "通知公告", "/system/notice"),
+            child("operlogs", "操作日志", "/system/operlog"),
+            child("loginlogs", "登录日志", "/system/loginlog"),
+            child("fields", "字段管理", "/system/field"),
+            child("dataScopes", "数据权限", "/system/data-scope"),
+            child("systemInterfaceLogs", "接口日志", "/system/interface-log")
         )
     ));
   }

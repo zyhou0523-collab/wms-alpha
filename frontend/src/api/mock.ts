@@ -390,6 +390,130 @@ function seed() {
     status: 'ACTIVE'
   }))
 
+  users.forEach((user, index) => Object.assign(user, {
+    nickname: user.display_name,
+    dept_id: Math.min(index + 1, 6),
+    dept_name: ['信息系统部', '供应链运营部', '入库作业组', '出库发运组', '库存管理组', '供应链运营部'][index] || '供应链运营部',
+    post_id: Math.min(index + 1, 6),
+    post_name: ['系统管理员', 'WMS 主管', '入库操作员', '出库操作员', '库存操作员', 'WMS 主管'][index] || 'WMS 主管',
+    role_code: ['ADMIN', 'WMS_MANAGER', 'INBOUND_OPERATOR', 'OUTBOUND_OPERATOR', 'INVENTORY_ADMIN', 'OWNER_VIEWER'][index] || user.role_code,
+    role_name: ['系统管理员', 'WMS 主管', '入库操作员', '出库发运员', '库存管理员', '货主查看员'][index] || user.role_name,
+    owner_scope: index === 0 ? '*' : index === 5 ? '3060' : '1000,3060',
+    default_warehouse_code: 'WH-HZ-CENTRAL',
+    default_owner_code: index === 5 ? '3060' : '1000'
+  }))
+
+  const systemRoles = [
+    ['ADMIN', '系统管理员', 'ALL', '*', '*'],
+    ['WMS_MANAGER', 'WMS 主管', 'ALL_WAREHOUSE', '*', '*'],
+    ['INBOUND_OPERATOR', '入库操作员', 'CUSTOM', 'WH-HZ-CENTRAL,WH-SH-REGION', '1000,3060'],
+    ['OUTBOUND_OPERATOR', '出库发运员', 'CUSTOM', 'WH-HZ-CENTRAL,WH-SH-REGION', '1000,3060'],
+    ['INVENTORY_ADMIN', '库存管理员', 'CUSTOM', 'WH-HZ-CENTRAL,WH-GZ-3PL', '1000,3060'],
+    ['OWNER_VIEWER', '货主查看员', 'OWNER', 'WH-HZ-CENTRAL,WH-SH-REGION', '3060']
+  ].map((item, index) => ({
+    id: index + 1,
+    role_code: item[0],
+    role_name: item[1],
+    role_sort: index + 1,
+    data_scope: item[2],
+    warehouse_scope: item[3],
+    owner_scope: item[4],
+    status: 'ACTIVE',
+    remark: 'WMS Alpha 演示角色',
+    updated_at: now()
+  }))
+  const systemDepts = ['集团总部', '供应链运营部', '入库作业组', '出库发运组', '库存管理组', '信息系统部'].map((name, index) => ({
+    id: index + 1,
+    parent_id: index === 0 ? 0 : 1,
+    dept_code: ['HQ', 'OPS', 'INBOUND', 'OUTBOUND', 'INVENTORY', 'IT'][index],
+    dept_name: name,
+    leader: ['Admin User', '王经理', '李主管', '赵主管', '陈主管', '系统管理员'][index],
+    phone: `0571-10000${index}`,
+    order_num: index + 1,
+    status: 'ACTIVE'
+  }))
+  const systemPosts = ['系统管理员', 'WMS 主管', '入库操作员', '出库操作员', '库存操作员', '主数据维护员'].map((name, index) => ({
+    id: index + 1,
+    post_code: ['SYS_ADMIN', 'WMS_MANAGER', 'INBOUND_OPERATOR', 'OUTBOUND_OPERATOR', 'INVENTORY_OPERATOR', 'MASTER_DATA_ADMIN'][index],
+    post_name: name,
+    post_sort: index + 1,
+    status: 'ACTIVE',
+    remark: 'WMS 岗位'
+  }))
+  const systemMenus = [
+    [1, 0, '数据驾驶舱', 'DIR', '', 'dashboard:view'],
+    [101, 1, '全局库存看板', 'MENU', '/dashboard', 'dashboard:view'],
+    [2, 0, '工作台', 'DIR', '', 'workbench:view'],
+    [201, 2, '我的工作台', 'MENU', '/dashboard/workbench', 'workbench:view'],
+    [5, 0, '入库管理', 'DIR', '', 'inbound:view'],
+    [501, 5, '预期到货通知单', 'MENU', '/inbound/arrival-notices', 'inbound:order:list'],
+    [502, 5, 'SN 绑定', 'MENU', '/inbound/sn-bindings', 'inbound:sn:list'],
+    [6, 0, '出库管理', 'DIR', '', 'outbound:view'],
+    [601, 6, '发运订单', 'MENU', '/outbound/shipping-orders', 'outbound:shipping:list'],
+    [7, 0, '库存管理', 'DIR', '', 'inventory:view'],
+    [701, 7, '库存查询', 'MENU', '/inventory/list', 'inventory:list'],
+    [702, 7, 'SN 查询', 'MENU', '/inventory/sn', 'inventory:sn:list'],
+    [703, 7, '库存盘点', 'MENU', '/inventory/count', 'inventory:count:list'],
+    [704, 7, '库存移动', 'MENU', '/inventory/move', 'inventory:move:list'],
+    [8, 0, '报表中心', 'DIR', '', 'reports:view'],
+    [801, 8, '进出存报表', 'MENU', '/reports/inout-stock', 'reports:inout:list'],
+    [9, 0, '接口中心', 'DIR', '', 'interface:view'],
+    [901, 9, '接口日志', 'MENU', '/interface/logs', 'interface:log:list'],
+    [10, 0, '系统管理', 'DIR', '', 'system:view'],
+    [1001, 10, '用户管理', 'MENU', '/system/users', 'system:user:list'],
+    [1002, 10, '角色管理', 'MENU', '/system/roles', 'system:role:list'],
+    [1003, 10, '菜单管理', 'MENU', '/system/menus', 'system:menu:list'],
+    [1004, 10, '部门管理', 'MENU', '/system/depts', 'system:dept:list'],
+    [1005, 10, '岗位管理', 'MENU', '/system/posts', 'system:post:list'],
+    [1006, 10, '字典管理', 'MENU', '/system/dict', 'system:dict:list'],
+    [1007, 10, '参数设置', 'MENU', '/system/config', 'system:config:list'],
+    [1008, 10, '通知公告', 'MENU', '/system/notice', 'system:notice:list'],
+    [1009, 10, '操作日志', 'MENU', '/system/operlog', 'system:operlog:list'],
+    [1010, 10, '登录日志', 'MENU', '/system/loginlog', 'system:loginlog:list'],
+    [1011, 10, '字段管理', 'MENU', '/system/field', 'system:field:list'],
+    [1012, 10, '数据权限', 'MENU', '/system/data-scope', 'system:data-scope:list'],
+    [1013, 10, '接口日志', 'MENU', '/system/interface-log', 'system:interface-log:list']
+  ].map((item, index) => ({
+    id: item[0],
+    parent_id: item[1],
+    menu_name: item[2],
+    menu_type: item[3],
+    path: item[4],
+    perms: item[5],
+    order_num: index + 1,
+    visible: 1,
+    status: 'ACTIVE'
+  }))
+  const systemDictTypes = [
+    { id: 1, dict_name: '系统状态', dict_type: 'sys_normal_disable', status: 'ACTIVE', remark: '启用/停用' },
+    { id: 2, dict_name: 'WMS 入库订单类型', dict_type: 'wms_inbound_type', status: 'ACTIVE', remark: '入库类型' },
+    { id: 3, dict_name: 'WMS 出库订单类型', dict_type: 'wms_outbound_type', status: 'ACTIVE', remark: '出库类型' }
+  ]
+  const systemConfigs = [
+    { id: 1, config_name: '系统名称', config_key: 'wms.system.name', config_value: 'WMS Alpha', config_type: 'Y', status: 'ACTIVE' },
+    { id: 2, config_name: '默认仓库', config_key: 'wms.default.warehouse', config_value: 'WH-HZ-CENTRAL', config_type: 'Y', status: 'ACTIVE' },
+    { id: 3, config_name: 'SAP Mock 开关', config_key: 'wms.mock.sap.enabled', config_value: 'true', config_type: 'Y', status: 'ACTIVE' }
+  ]
+  const systemNotices = [
+    { id: 1, notice_title: 'WMS PC V2.0 演示版本发布', notice_type: 'NOTICE', notice_content: '系统管理模块已补齐若依风格菜单。', status: 'PUBLISHED', created_by: 'admin', created_at: now() },
+    { id: 2, notice_title: '盘点作业提醒', notice_type: 'NOTICE', notice_content: '请使用 WH-HZ-CENTRAL 演示盘点闭环。', status: 'DRAFT', created_by: 'inventory01', created_at: now() }
+  ]
+  const systemLoginLogs = [
+    { id: 1, username: 'admin', ipaddr: '127.0.0.1', login_location: '本机演示环境', browser: 'Chrome', os: 'Windows', status: 'SUCCESS', message: '登录成功', login_time: now() },
+    { id: 2, username: 'owner3060', ipaddr: '127.0.0.1', login_location: '本机演示环境', browser: 'Edge', os: 'Windows', status: 'FAILED', message: '密码错误', login_time: now() }
+  ]
+  const systemFieldConfigs = [
+    { id: 1, page_code: 'inbound.arrival', page_name: '预期到货通知单', field_code: 'owner_code', field_name: '货主', field_type: 'SELECT', visible: 1, required: 1, editable: 1, order_num: 10, role_codes: 'ADMIN,WMS_MANAGER,INBOUND_OPERATOR' },
+    { id: 2, page_code: 'outbound.shipping', page_name: '发运订单', field_code: 'owner_code', field_name: '货主', field_type: 'SELECT', visible: 1, required: 1, editable: 1, order_num: 10, role_codes: 'ADMIN,WMS_MANAGER,OUTBOUND_OPERATOR' },
+    { id: 3, page_code: 'inventory.list', page_name: '库存查询', field_code: 'owner_code', field_name: '货主', field_type: 'SELECT', visible: 1, required: 0, editable: 0, order_num: 10, role_codes: 'ADMIN,WMS_MANAGER,INVENTORY_ADMIN,OWNER_VIEWER' }
+  ]
+  const systemDataScopes = [
+    { id: 1, scope_code: 'DS-ADMIN-ALL', scope_name: '系统管理员全量权限', role_code: 'ADMIN', role_name: '系统管理员', scope_type: 'ALL', dept_codes: '*', warehouse_codes: '*', owner_codes: '*', status: 'ACTIVE' },
+    { id: 2, scope_code: 'DS-OWNER-3060', scope_name: '货主 3060 查看权限', role_code: 'OWNER_VIEWER', role_name: '货主查看员', scope_type: 'OWNER', dept_codes: 'OPS', warehouse_codes: 'WH-HZ-CENTRAL,WH-SH-REGION', owner_codes: '3060', status: 'ACTIVE' }
+  ]
+  const systemRoleMenus = systemRoles.flatMap((role) => systemMenus.map((menu) => ({ role_id: role.id, menu_id: menu.id })))
+  const systemUserRoles = users.map((user) => ({ user_id: user.id, role_id: systemRoles.find((role) => role.role_code === user.role_code)?.id || 1 }))
+
   return {
     products,
     customers,
@@ -427,7 +551,19 @@ function seed() {
       { id: 1, module: 'INBOUND', business_doc_no: 'IN202606110001', action: 'CREATE_PRODUCTION_ORDER', operator: 'system', result: 'SUCCESS', message: 'SAP Mock 创建生产入库单', created_at: '2026-06-11 08:00:00' },
       { id: 2, module: 'INBOUND', business_doc_no: 'IN202606110001', action: 'MES_SN_PUSH', operator: 'system', result: 'SUCCESS', message: 'MES 下发 10 个 SN', created_at: '2026-06-11 08:05:00' }
     ],
-    users
+    users,
+    systemRoles,
+    systemDepts,
+    systemPosts,
+    systemMenus,
+    systemDictTypes,
+    systemConfigs,
+    systemNotices,
+    systemLoginLogs,
+    systemFieldConfigs,
+    systemDataScopes,
+    systemRoleMenus,
+    systemUserRoles
   }
 }
 
@@ -560,7 +696,19 @@ const endpointMap: Record<string, string> = {
   '/outbound-orders': 'outboundOrders',
   '/interface-logs': 'interfaceLogs',
   '/mock-configs': 'mockConfigs',
-  '/system/users': 'users'
+  '/system/users': 'users',
+  '/system/roles': 'systemRoles',
+  '/system/menus': 'systemMenus',
+  '/system/depts': 'systemDepts',
+  '/system/posts': 'systemPosts',
+  '/system/dict-types': 'systemDictTypes',
+  '/system/configs': 'systemConfigs',
+  '/system/notices': 'systemNotices',
+  '/system/loginlogs': 'systemLoginLogs',
+  '/system/fields': 'systemFieldConfigs',
+  '/system/data-scopes': 'systemDataScopes',
+  '/system/operlogs': 'operationLogs',
+  '/system/interface-log': 'interfaceLogs'
 }
 
 function mockDashboardSummary(store: any) {
@@ -772,6 +920,24 @@ function mockWorkbench(store: any) {
   }
 }
 
+function systemMenuChildren() {
+  return [
+    { id: 'users', title: '用户管理', path: '/system/users' },
+    { id: 'roles', title: '角色管理', path: '/system/roles' },
+    { id: 'menus', title: '菜单管理', path: '/system/menus' },
+    { id: 'depts', title: '部门管理', path: '/system/depts' },
+    { id: 'posts', title: '岗位管理', path: '/system/posts' },
+    { id: 'dict', title: '字典管理', path: '/system/dict' },
+    { id: 'configs', title: '参数设置', path: '/system/config' },
+    { id: 'notices', title: '通知公告', path: '/system/notice' },
+    { id: 'operlogs', title: '操作日志', path: '/system/operlog' },
+    { id: 'loginlogs', title: '登录日志', path: '/system/loginlog' },
+    { id: 'fields', title: '字段管理', path: '/system/field' },
+    { id: 'dataScopes', title: '数据权限', path: '/system/data-scope' },
+    { id: 'systemInterfaceLogs', title: '接口日志', path: '/system/interface-log' }
+  ]
+}
+
 export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
   await new Promise((resolve) => window.setTimeout(resolve, 120))
   const url = (config.url || '').replace(/^\/api/, '')
@@ -817,7 +983,7 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
         { id: 'inboundSnReport', title: '入库 SN 报表', path: '/reports/inbound-sn' }
       ] },
       { id: 'interface', title: '接口中心', icon: 'Connection', children: [{ id: 'interfaceLogs', title: '接口日志', path: '/interface/logs' }] },
-      { id: 'system', title: '系统设置', icon: 'Setting', children: [{ id: 'users', title: '系统用户', path: '/system/users' }] }
+      { id: 'system', title: '系统管理', icon: 'Setting', children: systemMenuChildren() }
     ] as T
   }
 
@@ -870,7 +1036,7 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
         { id: 'inboundSnReport', title: '入库 SN 报表', path: '/reports/inbound-sn' }
       ] },
       { id: 'interface', title: '接口中心', icon: 'Connection', children: [{ id: 'interfaceLogs', title: '接口日志', path: '/interface/logs' }] },
-      { id: 'system', title: '系统设置', icon: 'Setting', children: [{ id: 'users', title: '系统用户', path: '/system/users' }] }
+      { id: 'system', title: '系统管理', icon: 'Setting', children: systemMenuChildren() }
     ] as T
   }
 
@@ -1170,6 +1336,47 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
   const inventoryOpsResult = handleInventoryOpsMock<T>(store, url, method, (config.params || {}) as Row, (config.data || {}) as Row)
   if (inventoryOpsResult.handled) return inventoryOpsResult.value
 
+  if (url === '/system/menus/tree' && method === 'get') {
+    return (store.systemMenus || []) as T
+  }
+
+  if (url.startsWith('/system/roles/') && url.endsWith('/menus')) {
+    const roleId = Number(url.split('/')[3])
+    if (method === 'get') {
+      return (store.systemRoleMenus || [])
+        .filter((row: Row) => Number(row.role_id) === roleId)
+        .map((row: Row) => Number(row.menu_id)) as T
+    }
+    if (method === 'post') {
+      const menuIds = (((config.data || {}) as Row).menuIds || []) as number[]
+      store.systemRoleMenus = (store.systemRoleMenus || []).filter((row: Row) => Number(row.role_id) !== roleId)
+      menuIds.forEach((menuId) => store.systemRoleMenus.push({ role_id: roleId, menu_id: Number(menuId) }))
+      saveStore(store)
+      return 'ok' as T
+    }
+  }
+
+  if (url.startsWith('/system/users/') && url.endsWith('/roles')) {
+    const userId = Number(url.split('/')[3])
+    if (method === 'get') {
+      const roleIds = (store.systemUserRoles || [])
+        .filter((row: Row) => Number(row.user_id) === userId)
+        .map((row: Row) => Number(row.role_id))
+      return (store.systemRoles || []).filter((role: Row) => roleIds.includes(Number(role.id))) as T
+    }
+    if (method === 'post') {
+      const roleIds = (((config.data || {}) as Row).roleIds || []) as number[]
+      store.systemUserRoles = (store.systemUserRoles || []).filter((row: Row) => Number(row.user_id) !== userId)
+      roleIds.forEach((roleId) => store.systemUserRoles.push({ user_id: userId, role_id: Number(roleId) }))
+      saveStore(store)
+      return 'ok' as T
+    }
+  }
+
+  if (url.startsWith('/system/users/') && url.endsWith('/reset-password') && method === 'post') {
+    return 'ok' as T
+  }
+
   const basePath = Object.keys(endpointMap).find((key) => url === key || url.startsWith(`${key}/`))
   if (!basePath) {
     return {} as T
@@ -1256,6 +1463,18 @@ function normalizeStore(store: any) {
   store.mockConfigs ||= fresh.mockConfigs
   ensureMockConfigs(store)
   store.users ||= fresh.users
+  store.systemRoles ||= fresh.systemRoles
+  store.systemDepts ||= fresh.systemDepts
+  store.systemPosts ||= fresh.systemPosts
+  store.systemMenus ||= fresh.systemMenus
+  store.systemDictTypes ||= fresh.systemDictTypes
+  store.systemConfigs ||= fresh.systemConfigs
+  store.systemNotices ||= fresh.systemNotices
+  store.systemLoginLogs ||= fresh.systemLoginLogs
+  store.systemFieldConfigs ||= fresh.systemFieldConfigs
+  store.systemDataScopes ||= fresh.systemDataScopes
+  store.systemRoleMenus ||= fresh.systemRoleMenus
+  store.systemUserRoles ||= fresh.systemUserRoles
   store.packageBindings ||= fresh.packageBindings
   store.operationLogs ||= fresh.operationLogs
   store.inventoryAllocations ||= []

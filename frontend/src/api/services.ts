@@ -200,6 +200,19 @@ export const userService = {
   list: (params: ListParams) => list('/system/users', params)
 }
 
+export const systemService = {
+  list: (resource: string, params: ListParams) => list(`/system/${resource}`, params),
+  create: (resource: string, data: Record<string, unknown>) => create(`/system/${resource}`, data),
+  update: (resource: string, id: number, data: Record<string, unknown>) => update(`/system/${resource}`, id, data),
+  remove: (resource: string, id: number) => remove(`/system/${resource}`, id),
+  resetPassword: (id: number, password = '123456') => request<any>({ url: `/system/users/${id}/reset-password`, method: 'post', data: { password } }),
+  userRoles: (id: number) => request<any[]>({ url: `/system/users/${id}/roles`, method: 'get' }),
+  saveUserRoles: (id: number, roleIds: number[]) => request<any>({ url: `/system/users/${id}/roles`, method: 'post', data: { roleIds } }),
+  roleMenus: (id: number) => request<number[]>({ url: `/system/roles/${id}/menus`, method: 'get' }),
+  saveRoleMenus: (id: number, menuIds: number[]) => request<any>({ url: `/system/roles/${id}/menus`, method: 'post', data: { menuIds } }),
+  menuTree: () => request<any[]>({ url: '/system/menus/tree', method: 'get' })
+}
+
 export function dashboardSummaryApi() {
   return request<any>({ url: '/dashboard/summary', method: 'get' })
 }
