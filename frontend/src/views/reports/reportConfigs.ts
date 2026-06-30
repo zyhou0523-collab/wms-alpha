@@ -45,12 +45,13 @@ const ownerOptions = [
 ]
 
 const warehouseOptions = [
-  { label: 'WH-HZ-CENTRAL / 杭州集团总仓', value: 'WH-HZ-CENTRAL' },
-  { label: 'WH-SH-REGION / 上海区域销售仓', value: 'WH-SH-REGION' },
-  { label: 'WH-GZ-3PL / 广州第三方仓', value: 'WH-GZ-3PL' },
-  { label: 'WH-SZ-AFTERSALE / 深圳售后仓', value: 'WH-SZ-AFTERSALE' },
-  { label: 'WH-CUST-TESLA-VMI / Tesla 客户 VMI 仓', value: 'WH-CUST-TESLA-VMI' },
-  { label: 'WH-SUP-CATL-VMI / CATL 供应商 VMI 仓', value: 'WH-SUP-CATL-VMI' }
+  { label: 'HZ / 杭州仓', value: 'HZ' },
+  { label: 'NB / 宁波仓', value: 'NB' },
+  { label: 'SD / 顺德仓', value: 'SD' },
+  { label: 'NL / 荷兰仓', value: 'NL' },
+  { label: 'PL / 波兰仓', value: 'PL' },
+  { label: 'ES / 西班牙仓', value: 'ES' },
+  { label: 'RO / 罗马尼亚仓', value: 'RO' }
 ]
 
 const inboundTypeOptions = [

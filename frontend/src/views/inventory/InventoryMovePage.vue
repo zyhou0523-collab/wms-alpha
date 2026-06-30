@@ -339,12 +339,12 @@ const detailVisible = ref(false)
 const candidateVisible = ref(false)
 const detail = reactive<any>({})
 const candidates = reactive<any>({ inventory: [], sns: [], locations: [] })
-const candidateQuery = reactive<any>({ warehouseCode: 'WH-HZ-CENTRAL', ownerCode: '3060' })
+const candidateQuery = reactive<any>({ warehouseCode: 'HZ', ownerCode: '3060' })
 const createForm = reactive<any>({
   moveType: 'LOCATION_MOVE',
   ownerCode: '3060',
   ownerName: '杭州利沃得',
-  warehouseCode: 'WH-HZ-CENTRAL',
+  warehouseCode: 'HZ',
   fromLocationCode: 'A01-01-01',
   toLocationCode: 'A03-01-13',
   remark: '',

@@ -21,7 +21,7 @@
         <el-input v-model="query.mesWorkOrderNo" clearable placeholder="MES-MO-202606110001" />
       </el-form-item>
       <el-form-item label="仓库">
-        <el-input v-model="query.warehouseCode" clearable placeholder="WH-HZ-CENTRAL" />
+        <el-input v-model="query.warehouseCode" clearable placeholder="HZ" />
       </el-form-item>
       <el-form-item label="状态">
         <el-select v-model="query.status" clearable placeholder="请选择" style="width: 160px">
@@ -229,7 +229,7 @@ const total = ref(0)
 const selectedId = ref<number>()
 const query = reactive<any>({ pageNum: 1, pageSize: 10 })
 const form = reactive<any>({})
-const sapMockForm = reactive<any>({ inboundOrderNo: 'IN-MOCK-001', sapWorkOrderNo: 'MO-MOCK-001', mesWorkOrderNo: 'MES-MO-MOCK-001', productCode: 'GT3-30KD1R11001', warehouseCode: 'WH-HZ-CENTRAL', qty: 10 })
+const sapMockForm = reactive<any>({ inboundOrderNo: 'IN-MOCK-001', sapWorkOrderNo: 'MO-MOCK-001', mesWorkOrderNo: 'MES-MO-MOCK-001', productCode: 'GT3-30KD1R11001', warehouseCode: 'HZ', qty: 10 })
 const mesForm = reactive<any>({})
 const receiveForm = reactive<any>({})
 const bindForm = reactive<any>({})
@@ -271,7 +271,7 @@ function reset() {
 }
 
 function openCreate() {
-  Object.assign(form, { orderNo: '', sapWorkOrderNo: 'MO202606110001', mesWorkOrderNo: 'MES-MO-202606110001', productCode: 'GT3-30KD1R11001', warehouseCode: 'WH-HZ-CENTRAL', plannedQty: 10 })
+  Object.assign(form, { orderNo: '', sapWorkOrderNo: 'MO202606110001', mesWorkOrderNo: 'MES-MO-202606110001', productCode: 'GT3-30KD1R11001', warehouseCode: 'HZ', plannedQty: 10 })
   formMode.value = 'create'
   formVisible.value = true
 }

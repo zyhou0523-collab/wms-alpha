@@ -186,6 +186,18 @@ export const outboundService = {
   statusFlow: (id: number) => request<any>({ url: `/outbound-orders/${id}/status-flow`, method: 'get' })
 }
 
+export const codePrintService = {
+  getAuthorizedWarehouses: () => request<any>({ url: '/outbound/code-print/warehouses', method: 'get', params: { pageNum: 1, pageSize: 200, status: 'ACTIVE' } }),
+  generatePalletCodes: (data: Record<string, unknown>) => request<any>({ url: '/outbound/code-print/pallet/generate', method: 'post', data }),
+  generateBoxCodes: (data: Record<string, unknown>) => request<any>({ url: '/outbound/code-print/box/generate', method: 'post', data }),
+  searchPalletCode: (palletCode: string) => request<any>({ url: `/outbound/code-print/pallet/${encodeURIComponent(palletCode)}`, method: 'get' }),
+  searchBoxCode: (boxCode: string) => request<any>({ url: `/outbound/code-print/box/${encodeURIComponent(boxCode)}`, method: 'get' }),
+  reprintPalletCode: (palletCode: string) => request<any>({ url: `/outbound/code-print/pallet/${encodeURIComponent(palletCode)}/reprint`, method: 'post', data: {} }),
+  reprintBoxCode: (boxCode: string) => request<any>({ url: `/outbound/code-print/box/${encodeURIComponent(boxCode)}/reprint`, method: 'post', data: {} }),
+  getCodePrintRecords: (params: ListParams) => list('/outbound/code-print/records', params),
+  checkCodeUnique: (code: string, type: string) => request<any>({ url: '/outbound/code-print/check-unique', method: 'get', params: { code, type } })
+}
+
 export const interfaceLogService = {
   list: (params: ListParams) => list('/interface-logs', params),
   retry: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/interface-logs/${id}/retry`, method: 'post', data })

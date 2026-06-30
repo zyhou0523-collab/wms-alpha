@@ -1,6 +1,7 @@
 import axios, { AxiosRequestConfig } from 'axios'
 import { ElMessage } from 'element-plus'
 import { mockRequest } from './mock'
+import { appendWarehouseContextToData, appendWarehouseScopeToParams } from '../utils/warehouseAccess'
 
 export interface PageResult<T = Record<string, unknown>> {
   items: T[]
@@ -23,9 +24,10 @@ http.interceptors.request.use((config) => {
 })
 
 export async function request<T = unknown>(config: AxiosRequestConfig): Promise<T> {
+  const scopedConfig = withWarehouseContext(config)
   if (import.meta.env.VITE_USE_MOCK === 'true') {
     try {
-      return await mockRequest<T>(config)
+      return await mockRequest<T>(scopedConfig)
     } catch (error) {
       const message = error instanceof Error ? error.message : '接口调用失败'
       ElMessage.error(message)
@@ -34,7 +36,7 @@ export async function request<T = unknown>(config: AxiosRequestConfig): Promise<
   }
 
   try {
-    const response = await http.request(config)
+    const response = await http.request(scopedConfig)
     const payload = response.data
     if (payload.code !== 0) {
       throw new Error(payload.message || '接口调用失败')
@@ -45,4 +47,34 @@ export async function request<T = unknown>(config: AxiosRequestConfig): Promise<
     ElMessage.error(message)
     throw error
   }
+}
+
+function withWarehouseContext(config: AxiosRequestConfig): AxiosRequestConfig {
+  const url = String(config.url || '')
+  const method = String(config.method || 'get').toLowerCase()
+  if (isWarehouseContextExcluded(url)) return config
+  if (method === 'get') {
+    return {
+      ...config,
+      params: appendWarehouseScopeToParams((config.params || {}) as Record<string, unknown>)
+    }
+  }
+  if (['post', 'put', 'patch', 'delete'].includes(method)) {
+    return {
+      ...config,
+      data: appendWarehouseContextToData((config.data || {}) as Record<string, unknown>)
+    }
+  }
+  return config
+}
+
+function isWarehouseContextExcluded(url: string) {
+  const normalized = url.replace(/^\/api/, '')
+  return [
+    '/auth/login',
+    '/auth/me',
+    '/menus',
+    '/products/options',
+    '/customers/options'
+  ].some((path) => normalized === path || normalized.startsWith(`${path}/`))
 }

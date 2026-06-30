@@ -154,7 +154,7 @@ export const regionMapNodes: GlobalMapNode[] = [
 ]
 
 export const centralWarehouseNodes: GlobalMapNode[] = [
-  centralWarehouse('WH-HZ-CENTRAL', '杭州仓', '中国', '杭州', 120.1551, 30.2741, 168000, 12806, 5, 101, 'WARNING', {
+  centralWarehouse('HZ', '杭州仓', '中国', '杭州', 120.1551, 30.2741, 168000, 12806, 5, 101, 'WARNING', {
     skuCount: 260,
     owners: 2,
     staleQty: 11800,
@@ -230,7 +230,7 @@ const agingProducts: TopAgingProduct[] = [
   aging('BLF51-5R31101', '电池模块备件', 'WH-BR-MANAUS', 'BRAZIL_CENTER', 414, '是', '区域清仓 / 售后消耗'),
   aging('SP-CABLE-001', '高压线束', 'WH-ZA', 'AFRICA_REGION', 398, '否', '跨仓调拨'),
   aging('GT3-10KD1R11004', '三相并网逆变器', 'WH-MX', 'LATAM_REGION', 376, '否', '优先销售订单匹配'),
-  aging('GT3-50KD1R11002', '工商业储能电池包', 'WH-HZ-CENTRAL', 'GLOBAL', 368, '是', '中央仓优先调拨海外'),
+  aging('GT3-50KD1R11002', '工商业储能电池包', 'HZ', 'GLOBAL', 368, '是', '中央仓优先调拨海外'),
   aging('PACK-HV-280AH', '高压电池簇', 'WH-SD-CENTRAL', 'GLOBAL', 356, '是', '顺德生产订单优先消耗'),
   aging('INV-50K-001', '50kW 储能逆变器', 'WH-NB-CENTRAL', 'GLOBAL', 342, '否', '宁波出口订单优先锁定'),
   aging('PACK-HV-280AH', '高压电池簇', 'WH-PK', 'SA_REGION', 352, '是', '重点跟进客户需求'),

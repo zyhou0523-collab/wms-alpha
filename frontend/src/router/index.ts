@@ -16,6 +16,7 @@ import InboundOrderPage from '../views/inbound/InboundOrderPage.vue'
 import InboundOrderDetail from '../views/inbound/InboundOrderDetail.vue'
 import SnBindingPage from '../views/inbound/SnBindingPage.vue'
 import OutboundOrderPage from '../views/outbound/OutboundOrderPage.vue'
+import CodePrintPage from '../views/outbound/CodePrintPage.vue'
 import InterfaceLogPage from '../views/interfacecenter/InterfaceLogPage.vue'
 import SystemAdminPage from '../views/system/SystemAdminPage.vue'
 import InoutStockReport from '../views/reports/InoutStockReport.vue'
@@ -49,6 +50,7 @@ const routes: RouteRecordRaw[] = [
       { path: 'inbound/orders', redirect: '/inbound/arrival-notices' },
       { path: 'inbound/production', redirect: '/inbound/arrival-notices' },
       { path: 'outbound/shipping-orders', component: OutboundOrderPage, meta: { title: '发运订单', outboundMode: 'orders' } },
+      { path: 'outbound/code-print', component: CodePrintPage, meta: { title: '条码打印' } },
       { path: 'outbound/orders', redirect: '/outbound/shipping-orders' },
       { path: 'outbound/sales', redirect: '/outbound/shipping-orders' },
       { path: 'outbound/transfers', redirect: '/outbound/shipping-orders' },

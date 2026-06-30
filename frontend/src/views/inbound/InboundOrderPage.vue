@@ -27,7 +27,7 @@
         </el-select>
       </el-form-item>
       <el-form-item label="仓库编码">
-        <el-input v-model="query.warehouseCode" clearable placeholder="WH-HZ-CENTRAL" />
+        <el-input v-model="query.warehouseCode" clearable placeholder="HZ" />
       </el-form-item>
       <el-form-item label="货主">
         <el-input v-model="query.owner" clearable placeholder="货主编码/名称" />

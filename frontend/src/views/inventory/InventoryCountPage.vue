@@ -123,7 +123,7 @@
           </el-col>
           <el-col :span="8">
             <el-form-item label="仓库编码">
-              <el-input v-model="createForm.warehouseCode" placeholder="WH-HZ-CENTRAL" />
+              <el-input v-model="createForm.warehouseCode" placeholder="HZ" />
             </el-form-item>
           </el-col>
           <el-col :span="8">
@@ -340,7 +340,7 @@ const scanText = ref('')
 const createForm = reactive<any>({
   countType: 'RANGE',
   countScope: 'LOCATION',
-  warehouseCode: 'WH-HZ-CENTRAL',
+  warehouseCode: 'HZ',
   ownerCode: '3060',
   ownerName: '杭州利沃得',
   locationCode: 'A01-01-01',

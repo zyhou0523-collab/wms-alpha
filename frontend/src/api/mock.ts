@@ -1,7 +1,111 @@
 import type { AxiosRequestConfig } from 'axios'
 import type { PageResult } from './http'
+import {
+  DEMO_WAREHOUSES,
+  authorizedWarehousesForUser,
+  normalizeWarehouseCode,
+  validateWarehouseAccess,
+  warehouseByCode,
+  type WarehouseContext
+} from '../utils/warehouseAccess'
 
 type Row = Record<string, any>
+
+function scopedWarehouseCodes(paramsOrData: Row = {}) {
+  const context = paramsOrData.warehouseContext as WarehouseContext | undefined
+  if (context?.authorizedWarehouseCodes?.length) {
+    return context.isAllWarehouse ? context.authorizedWarehouseCodes : [context.selectedWarehouseCode]
+  }
+  if (paramsOrData.warehouseCodes) return String(paramsOrData.warehouseCodes).split(',').map((item) => normalizeWarehouseCode(item)).filter(Boolean)
+  if (paramsOrData.warehouseCode || paramsOrData.warehouse_code) return [normalizeWarehouseCode(paramsOrData.warehouseCode || paramsOrData.warehouse_code)]
+  return DEMO_WAREHOUSES.map((row) => row.warehouse_code)
+}
+
+function rowWarehouseCode(row: Row) {
+  return normalizeWarehouseCode(row.warehouse_code || row.warehouseCode || '')
+}
+
+function filterRowsByWarehouseScope(rows: Row[], paramsOrData: Row = {}) {
+  const codes = scopedWarehouseCodes(paramsOrData)
+  if (!codes.length || codes.includes('__NO_AUTH__')) return []
+  return rows.filter((row) => {
+    const code = rowWarehouseCode(row)
+    return !code || codes.includes(code)
+  })
+}
+
+function requireWarehouseAllowed(row: Row | undefined, paramsOrData: Row = {}) {
+  if (!row) throw new Error('业务对象不存在')
+  const context = paramsOrData.warehouseContext as WarehouseContext | undefined
+  if (!context) {
+    const codes = scopedWarehouseCodes(paramsOrData)
+    const code = rowWarehouseCode(row)
+    if (code && codes.length && !codes.includes(code)) throw new Error('当前账号未授权访问该仓库。')
+    return
+  }
+  const result = validateWarehouseAccess(row, context)
+  if (!result.valid) throw new Error(result.message)
+}
+
+function hydrateMockUser(user: Row, store?: any) {
+  const sourceWarehouses = store?.warehouses?.length ? store.warehouses : DEMO_WAREHOUSES
+  const authorized = authorizedWarehousesForUser(user, sourceWarehouses)
+  return {
+    ...user,
+    warehouse_scope: user.warehouse_scope || (String(user.role_code || '').toUpperCase() === 'ADMIN' ? '*' : authorized.map((row) => row.warehouse_code).join(',')),
+    authorized_warehouses: authorized
+  }
+}
+
+function findCodeGlobalOwner(store: any, code: string, type?: 'SN' | 'PALLET' | 'BOX' | 'LOCATION') {
+  const value = String(code || '').trim()
+  if (!value) return null
+  if (!type || type === 'SN') {
+    const sn = (store.serialNumbers || []).find((row: Row) => row.sn_code === value)
+    if (sn) return { type: 'SN', ...sn }
+  }
+  if (!type || type === 'PALLET') {
+    const row = [...(store.serialNumbers || []), ...(store.inventory || []), ...(store.packageBindings || [])]
+      .find((item: Row) => item.pallet_code === value)
+    if (row) return { type: 'PALLET', ...row }
+  }
+  if (!type || type === 'BOX') {
+    const row = [...(store.serialNumbers || []), ...(store.inventory || []), ...(store.packageBindings || [])]
+      .find((item: Row) => item.box_code === value)
+    if (row) return { type: 'BOX', ...row }
+  }
+  if (!type || type === 'LOCATION') {
+    const row = (store.locations || []).find((item: Row) => item.location_code === value)
+    if (row) return { type: 'LOCATION', ...row }
+  }
+  return null
+}
+
+function ensureContainerCodeAllowed(store: any, code: string, type: 'PALLET' | 'BOX', warehouseCode: string) {
+  if (!code) return
+  const owner = findCodeGlobalOwner(store, code, type)
+  if (owner && owner.warehouse_code && owner.warehouse_code !== warehouseCode) {
+    throw new Error(`${type === 'PALLET' ? '托盘码' : '箱码'} ${code} 已归属于【${owner.warehouse_name || owner.warehouse_code}】，不允许跨仓重复使用。`)
+  }
+}
+
+function scopedStore(store: any, params: Row = {}) {
+  return {
+    ...store,
+    warehouses: filterRowsByWarehouseScope(store.warehouses || [], params),
+    locations: filterRowsByWarehouseScope(store.locations || [], params),
+    inventory: filterRowsByWarehouseScope(store.inventory || [], params),
+    serialNumbers: filterRowsByWarehouseScope(store.serialNumbers || [], params),
+    inboundOrders: filterRowsByWarehouseScope(store.inboundOrders || [], params),
+    outboundOrders: filterRowsByWarehouseScope(store.outboundOrders || [], params),
+    inventoryAllocations: filterRowsByWarehouseScope(store.inventoryAllocations || [], params),
+    pickingTasks: filterRowsByWarehouseScope(store.pickingTasks || [], params),
+    shipmentRecords: filterRowsByWarehouseScope(store.shipmentRecords || [], params),
+    codePrintRecords: filterRowsByWarehouseScope(store.codePrintRecords || [], params),
+    interfaceLogs: filterRowsByWarehouseScope(store.interfaceLogs || [], params),
+    operationLogs: filterRowsByWarehouseScope(store.operationLogs || [], params)
+  }
+}
 
 const statusList = ['CREATED', 'PARTIAL_RECEIVED', 'RECEIVING', 'COLLECTED', 'RECEIVED', 'ON_SHELF', 'ALLOCATED', 'PICKED', 'SHIPPED', 'CLOSED', 'FAILED']
 const COLLECTED_SN_STATUSES = ['COLLECTED', 'RECEIVED', 'INBOUND', 'ON_SHELF']
@@ -943,6 +1047,29 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
   const url = (config.url || '').replace(/^\/api/, '')
   const method = (config.method || 'get').toLowerCase()
   const store = getStore()
+  const queryStore = method === 'get' ? scopedStore(store, (config.params || {}) as Row) : store
+
+  if (url === '/auth/login' && method === 'post') {
+    const username = (config.data as any)?.username || 'admin'
+    const user = hydrateMockUser((store.users || []).find((row: Row) => row.username === username) || {
+      username,
+      display_name: username,
+      role_code: username === 'logistics' ? 'LOGISTICS' : username === 'wh_admin' ? 'WAREHOUSE_ADMIN' : 'ADMIN',
+      role_name: username === 'logistics' ? '物流作业员' : username === 'wh_admin' ? '仓库管理员' : '系统管理员',
+      warehouse_scope: username === 'logistics' ? 'WH-SH-REGION' : username === 'wh_admin' ? 'WH-HZ-CENTRAL,WH-GZ-3PL' : '*'
+    }, store)
+    return { token: `mock-jwt-${username}-${Date.now()}`, user } as T
+  }
+
+  if (url === '/auth/me' && method === 'get') {
+    return hydrateMockUser((store.users || []).find((row: Row) => row.username === 'admin') || {
+      username: 'admin',
+      display_name: '系统管理员',
+      role_code: 'ADMIN',
+      role_name: '系统管理员',
+      warehouse_scope: '*'
+    }, store) as T
+  }
 
   if (url === '/menus' && method === 'get') {
     return [
@@ -965,7 +1092,8 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
         { id: 'snBindings', title: 'SN 绑定', path: '/inbound/sn-bindings' }
       ] },
       { id: 'outbound', title: '出库管理', icon: 'Upload', children: [
-        { id: 'shippingOrders', title: '发运订单', path: '/outbound/shipping-orders' }
+        { id: 'shippingOrders', title: '发运订单', path: '/outbound/shipping-orders' },
+        { id: 'codePrint', title: '条码打印', path: '/outbound/code-print' }
       ] },
       { id: 'inventory', title: '库存管理', icon: 'Box', children: [
         { id: 'inventoryList', title: '库存查询', path: '/inventory/list' },
@@ -1019,7 +1147,10 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
         { id: 'arrivalNotices', title: '预期到货通知单', path: '/inbound/arrival-notices' },
         { id: 'snBindings', title: 'SN 绑定', path: '/inbound/sn-bindings' }
       ] },
-      { id: 'outbound', title: '出库管理', icon: 'Upload', children: [{ id: 'shippingOrders', title: '发运订单', path: '/outbound/shipping-orders' }] },
+      { id: 'outbound', title: '出库管理', icon: 'Upload', children: [
+        { id: 'shippingOrders', title: '发运订单', path: '/outbound/shipping-orders' },
+        { id: 'codePrint', title: '条码打印', path: '/outbound/code-print' }
+      ] },
       { id: 'inventory', title: '库存管理', icon: 'Box', children: [
         { id: 'inventoryList', title: '库存查询', path: '/inventory/list' },
         { id: 'snList', title: 'SN 查询', path: '/inventory/sn' },
@@ -1041,56 +1172,56 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
   }
 
   if (url === '/dashboard/summary') {
-    return mockDashboardSummary(store) as T
+    return mockDashboardSummary(queryStore) as T
   }
 
   if (url === '/dashboard/inventory-structure') {
-    return mockInventoryStructure(store) as T
+    return mockInventoryStructure(queryStore) as T
   }
 
   if (url === '/dashboard/warehouse-map') {
-    return mockWarehouseMap(store) as T
+    return mockWarehouseMap(queryStore) as T
   }
 
   if (url === '/dashboard/inout-trend') {
-    return mockInoutTrend(store) as T
+    return mockInoutTrend(queryStore) as T
   }
 
   if (url === '/dashboard/warehouse-operation' || url === '/dashboard/warehouse-operations') {
-    return mockWarehouseOperations(store) as T
+    return mockWarehouseOperations(queryStore) as T
   }
 
   if (url === '/dashboard/safety-warnings') {
-    return mockSafetyWarnings(store, Number((config.params as Row)?.limit || 10)) as T
+    return mockSafetyWarnings(queryStore, Number((config.params as Row)?.limit || 10)) as T
   }
 
   if (url === '/dashboard/aging-warnings') {
-    return mockAgingWarnings(store, Number((config.params as Row)?.limit || 10)) as T
+    return mockAgingWarnings(queryStore, Number((config.params as Row)?.limit || 10)) as T
   }
 
   if (url === '/workbench') {
-    return mockWorkbench(store) as T
+    return mockWorkbench(queryStore) as T
   }
 
   if (url === '/workbench/summary') {
-    return mockWorkbench(store).summary as T
+    return mockWorkbench(queryStore).summary as T
   }
 
   if (url === '/workbench/inventory-query') {
     const params = (config.params || {}) as Row
-    return mockInventoryQuery(store, params, Number(params.limit || 5)) as T
+    return mockInventoryQuery(queryStore, params, Number(params.limit || 5)) as T
   }
 
   if (url === '/workbench/todo-list') {
-    return mockWorkbench(store).todoList as T
+    return mockWorkbench(queryStore).todoList as T
   }
 
   if (url === '/workbench/pending-inbound') {
-    return mockWorkbench(store).pendingInbound as T
+    return mockWorkbench(queryStore).pendingInbound as T
   }
 
   if (url === '/workbench/pending-outbound') {
-    return mockWorkbench(store).pendingOutbound as T
+    return mockWorkbench(queryStore).pendingOutbound as T
   }
 
   if (url.startsWith('/interface-logs/') && method === 'post') {
@@ -1192,7 +1323,7 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
   if (url === '/mock/sap/production-orders' && method === 'post') {
     const body = (config.data || {}) as Row
     const product = store.products.find((row: Row) => row.product_code === (body.productCode || 'GT3-30KD1R11001')) || store.products[0]
-    const warehouse = store.warehouses.find((row: Row) => row.warehouse_code === (body.warehouseCode || 'WH-HZ-CENTRAL')) || store.warehouses[0]
+    const warehouse = store.warehouses.find((row: Row) => row.warehouse_code === normalizeWarehouseCode(body.warehouseCode || 'HZ')) || store.warehouses[0]
     const orderNo = body.inboundOrderNo || `IN-MOCK-${Date.now()}`
     const next = {
       id: Date.now(),
@@ -1288,6 +1419,8 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
     const segments = url.split('/')
     const id = url.startsWith('/inbound-orders/') ? Number(segments[2]) : Number(segments[3])
     const action = url.startsWith('/inbound-orders/') ? segments[3] : segments[4]
+    const inboundOrder = (store.inboundOrders || []).find((row: Row) => Number(row.id) === Number(id))
+    requireWarehouseAllowed(inboundOrder, method === 'get' ? (config.params || {}) as Row : (config.data || {}) as Row)
     if (method === 'get' && action === 'sn-collect-context') return mockOrderSnCollectContext(store, id) as T
     if (action === 'lines') {
       const lineId = url.startsWith('/inbound-orders/') ? Number(segments[4]) : Number(segments[5])
@@ -1310,7 +1443,8 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
   }
 
   if ((url === '/inbound-orders' || url === '/inbound/arrival-notices') && method === 'get') {
-    return pageInboundOrders(store, (config.params || {}) as Row) as T
+    const params = (config.params || {}) as Row
+    return pageInboundOrders({ ...store, inboundOrders: filterRowsByWarehouseScope(store.inboundOrders || [], params) }, params) as T
   }
 
   if (url === '/inbound/sn-bindings' && method === 'get') {
@@ -1329,6 +1463,9 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
     saveStore(store)
     return 'deleted' as T
   }
+
+  const codePrintResult = handleCodePrintMock<T>(store, url, method, (config.params || {}) as Row, (config.data || {}) as Row)
+  if (codePrintResult.handled) return codePrintResult.value
 
   const outboundResult = handleOutboundMock<T>(store, url, method, (config.params || {}) as Row, (config.data || {}) as Row)
   if (outboundResult.handled) return outboundResult.value
@@ -1382,12 +1519,16 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
     return {} as T
   }
   const collectionName = endpointMap[basePath]
-  const collection: Row[] = store[collectionName] || []
+  const params = (config.params || {}) as Row
+  const rawCollection: Row[] = store[collectionName] || []
+  const collection = ['warehouses', 'locations', 'inventory', 'serialNumbers', 'inboundOrders', 'outboundOrders', 'interfaceLogs', 'operationLogs']
+    .includes(collectionName)
+    ? filterRowsByWarehouseScope(rawCollection, params)
+    : rawCollection
 
   if (method === 'get') {
-    const params = (config.params || {}) as Row
     const filtered = collection.filter((row) => Object.keys(params).every((key) => {
-      if (['pageNum', 'pageSize'].includes(key) || params[key] === '' || params[key] == null) return true
+      if (['pageNum', 'pageSize', 'warehouseCodes'].includes(key) || params[key] === '' || params[key] == null) return true
       const value = String(row[key] ?? row[toSnake(key)] ?? '')
       return value.includes(String(params[key]))
     }))
@@ -1489,6 +1630,8 @@ function normalizeStore(store: any) {
   store.inventoryMoveOrders ||= mockMoveOrders()
   store.inventoryMoveLines ||= mockMoveLines()
   store.outboundExceptions ||= []
+  store.codePrintRecords ||= []
+  ensureWarehouseAuthorizationDemo(store)
   restoreFullMockSeedIfReduced(store, fresh)
   ensureOwnerCustomerProductData(store)
 
@@ -1580,6 +1723,8 @@ function normalizeStore(store: any) {
   ensureMockOwnerOnStock(store)
   ensureMixedInboundDemo(store)
   ensureInboundShipFromCountries(store)
+  ensureWarehouseAuthorizationDemo(store)
+  ensureCodePrintDemo(store)
   return store
 }
 
@@ -1600,6 +1745,104 @@ function ensureMockOwnerOnStock(store: any) {
     row.sn_managed ??= product?.sn_managed || 1
     row.quality_status ||= 'QUALIFIED'
     row.locked_flag ??= row.status === 'ALLOCATED' || row.status === 'PICKED' ? 1 : 0
+  })
+}
+
+function ensureWarehouseAuthorizationDemo(store: any) {
+  normalizePhysicalWarehouseData(store)
+  ;(store.users || []).forEach((user: Row) => {
+    const hydrated = hydrateMockUser(user, store)
+    user.warehouse_scope = hydrated.warehouse_scope
+    user.authorized_warehouses = hydrated.authorized_warehouses
+  })
+  const upsertUser = (username: string, roleCode: string, roleName: string, warehouseScope: string) => {
+    const existing = store.users.find((row: Row) => row.username === username)
+    const row = hydrateMockUser({
+      id: existing?.id || nextId(store.users),
+      username,
+      display_name: username,
+      role_code: roleCode,
+      role_name: roleName,
+      warehouse_scope: warehouseScope,
+      status: 'ACTIVE'
+    }, store)
+    if (existing) Object.assign(existing, row)
+    else store.users.push(row)
+  }
+  upsertUser('admin', 'ADMIN', '系统管理员', '*')
+  upsertUser('wh_admin', 'WAREHOUSE_ADMIN', '仓库管理员', 'HZ,NB,SD')
+  upsertUser('logistics', 'LOGISTICS', '物流作业员', 'NL,PL,ES,RO')
+  const attachWarehouse = (row: Row) => {
+    const code = normalizeWarehouseCode(row.warehouse_code || row.warehouseCode)
+    const warehouse = store.warehouses.find((item: Row) => item.warehouse_code === code)
+    if (warehouse) {
+      row.warehouse_code = warehouse.warehouse_code
+      if ('warehouseCode' in row) row.warehouseCode = warehouse.warehouse_code
+      row.warehouse_name = warehouse.warehouse_name
+      row.warehouseName ||= row.warehouse_name
+    }
+  }
+  ;['inboundOrders', 'outboundOrders', 'inventory', 'serialNumbers', 'locations', 'inventoryTransactions', 'interfaceLogs', 'operationLogs', 'inventoryAllocations', 'pickingTasks', 'shipmentRecords', 'inventoryCountOrders', 'inventoryCountLines', 'inventoryMoveOrders'].forEach((collection) => {
+    ;(store[collection] || []).forEach(attachWarehouse)
+  })
+}
+
+function normalizePhysicalWarehouseData(store: any) {
+  const canonical = DEMO_WAREHOUSES.map((warehouse) => ({
+    ...warehouse,
+    created_at: '2026-06-30 09:00:00',
+    updated_at: '2026-06-30 09:00:00',
+    own_flag: ['HZ', 'NB', 'SD'].includes(warehouse.warehouse_code) ? 1 : 0,
+    vmi_flag: 0
+  }))
+  store.warehouses = canonical.map((warehouse) => {
+    const existing = (store.warehouses || []).find((row: Row) => normalizeWarehouseCode(row.warehouse_code) === warehouse.warehouse_code)
+    return { ...existing, ...warehouse, id: warehouse.id }
+  })
+
+  const remapWarehouse = (row: Row) => {
+    const code = normalizeWarehouseCode(row.warehouse_code || row.warehouseCode)
+    const warehouse = warehouseByCode(code, canonical)
+    if (warehouse) {
+      row.warehouse_code = warehouse.warehouse_code
+      row.warehouse_name = warehouse.warehouse_name
+      if ('warehouseCode' in row) row.warehouseCode = warehouse.warehouse_code
+      if ('warehouseName' in row) row.warehouseName = warehouse.warehouse_name
+    }
+    const targetCode = normalizeWarehouseCode(row.target_warehouse_code || row.targetWarehouseCode)
+    const target = warehouseByCode(targetCode, canonical)
+    if (target) {
+      row.target_warehouse_code = target.warehouse_code
+      row.target_warehouse_name = target.warehouse_name
+      if ('targetWarehouseCode' in row) row.targetWarehouseCode = target.warehouse_code
+      if ('targetWarehouseName' in row) row.targetWarehouseName = target.warehouse_name
+    }
+  }
+
+  ;[
+    'locations',
+    'inventory',
+    'serialNumbers',
+    'packageBindings',
+    'inboundOrders',
+    'inboundOrderLines',
+    'inboundReceipts',
+    'inboundReceiptLines',
+    'outboundOrders',
+    'outboundOrderLines',
+    'inventoryAllocations',
+    'pickingTasks',
+    'pickingRecords',
+    'shipmentRecords',
+    'inventoryTransactions',
+    'interfaceLogs',
+    'operationLogs',
+    'inventoryCountOrders',
+    'inventoryCountLines',
+    'inventoryMoveOrders',
+    'codePrintRecords'
+  ].forEach((collection) => {
+    ;(store[collection] || []).forEach(remapWarehouse)
   })
 }
 
@@ -2129,7 +2372,7 @@ function ensureShippingOrderV3Demo(store: any) {
     { shipmentOrderNo: 'SO-OUT-202606110002', orderType: 'SALES_OUTBOUND', relatedOrderNo: 'FUL-SO-202606110002', salesOrderNo: 'SO202606110002', consigneeCode: 'CUST-BYD-002', lines: [{ lineNo: 10, productCode: gt3.product_code, orderQty: 5, snRequired: true }] }
   ].forEach((body) => {
     if (!store.outboundOrders.some((row: Row) => row.order_no === body.shipmentOrderNo)) {
-      mockCreateShippingOrderV3(store, { warehouseCode: 'WH-HZ-CENTRAL', ownerCode: demoOwnerCode, ownerName: demoOwnerName, ...body })
+      mockCreateShippingOrderV3(store, { warehouseCode: 'HZ', ownerCode: demoOwnerCode, ownerName: demoOwnerName, ...body })
     }
   })
   const sto = store.outboundOrders.find((row: Row) => row.order_no === 'STO-OUT-202606110001')
@@ -2253,12 +2496,14 @@ function shipmentRow(shipmentNo: string, order: Row, qty: number, carrier: strin
 }
 
 function handleOutboundMock<T>(store: any, url: string, method: string, params: Row, body: Row): { handled: true; value: T } | { handled: false; value?: never } {
-  if (url === '/outbound-orders' && method === 'get') return handled(pageOutboundOrders(store, params) as T)
+  if (url === '/outbound-orders' && method === 'get') return handled(pageOutboundOrders({ ...store, outboundOrders: filterRowsByWarehouseScope(store.outboundOrders || [], params) }, params) as T)
   if (url === '/outbound-orders' && method === 'post') return handled(mockCreateShippingOrderV3(store, body) as T)
   if (url.startsWith('/outbound-orders/')) {
     const segments = url.split('/')
     const id = Number(segments[2])
     const action = segments[3]
+    const order = (store.outboundOrders || []).find((row: Row) => Number(row.id) === Number(id))
+    requireWarehouseAllowed(order, method === 'get' ? params : body)
     if (method === 'get' && !action) return handled(mockOutboundDetail(store, id) as T)
     if (method === 'get' && action === 'allocations') return handled(mockAllocationView(store, id) as T)
     if (method === 'get' && action === 'allocation-candidates') return handled({ items: mockAllocationView(store, id).availableInventory, recommended: mockAllocationView(store, id).recommendedInventory } as T)
@@ -2282,10 +2527,10 @@ function handleOutboundMock<T>(store: any, url: string, method: string, params: 
     if (method === 'post' && action === 'cancel') return handled(mockCancelOrder(store, id, body) as T)
     if (method === 'post' && action === 'close') return handled(mockCloseOrder(store, id, body) as T)
   }
-  if (url === '/outbound/shipping-orders' && method === 'get') return handled(pageOutboundOrders(store, params) as T)
-  if (url === '/outbound/sales-orders' && method === 'get') return handled(pageRows(store.outboundOrders.filter((row: Row) => row.outbound_type === 'SALES'), params) as T)
-  if (url === '/outbound/transfer-orders' && method === 'get') return handled(pageRows(store.outboundOrders.filter((row: Row) => row.outbound_type === 'TRANSFER'), params) as T)
-  if (url === '/outbound/picking-tasks' && method === 'get') return handled(pageRows(store.pickingTasks, params) as T)
+  if (url === '/outbound/shipping-orders' && method === 'get') return handled(pageOutboundOrders({ ...store, outboundOrders: filterRowsByWarehouseScope(store.outboundOrders || [], params) }, params) as T)
+  if (url === '/outbound/sales-orders' && method === 'get') return handled(pageRows(filterRowsByWarehouseScope(store.outboundOrders.filter((row: Row) => row.outbound_type === 'SALES'), params), params) as T)
+  if (url === '/outbound/transfer-orders' && method === 'get') return handled(pageRows(filterRowsByWarehouseScope(store.outboundOrders.filter((row: Row) => row.outbound_type === 'TRANSFER'), params), params) as T)
+  if (url === '/outbound/picking-tasks' && method === 'get') return handled(pageRows(filterRowsByWarehouseScope(store.pickingTasks, params), params) as T)
   if (url === '/outbound/sales-orders/mock' && method === 'post') return handled(mockCreateOutbound(store, body, 'SALES') as T)
   if (url === '/outbound/transfer-orders/mock' && method === 'post') return handled(mockCreateOutbound(store, body, 'TRANSFER') as T)
   if (url === '/outbound/shipping-orders/mock' && method === 'post') return handled(mockCreateOutbound(store, body, String(body.outboundType || 'SALES')) as T)
@@ -2293,6 +2538,8 @@ function handleOutboundMock<T>(store: any, url: string, method: string, params: 
     const segments = url.split('/')
     const id = Number(segments[3])
     const action = segments[4]
+    const order = (store.outboundOrders || []).find((row: Row) => Number(row.id) === Number(id))
+    requireWarehouseAllowed(order, method === 'get' ? params : body)
     if (method === 'get' && !action) return handled(mockOutboundDetail(store, id) as T)
     if (method === 'get' && action === 'allocations') return handled(mockAllocationView(store, id) as T)
     if (method === 'get' && action === 'interface-logs') return handled({ items: store.interfaceLogs.filter((row: Row) => row.business_doc_no === mockOutboundOrder(store, id).order_no) } as T)
@@ -2318,6 +2565,182 @@ function handleOutboundMock<T>(store: any, url: string, method: string, params: 
 
 function handled<T>(value: T): { handled: true; value: T } {
   return { handled: true, value }
+}
+
+function handleCodePrintMock<T>(store: any, url: string, method: string, params: Row, body: Row): { handled: true; value: T } | { handled: false; value?: never } {
+  if (url === '/outbound/code-print/warehouses' && method === 'get') {
+    return handled({ items: filterRowsByWarehouseScope(store.warehouses || [], params), total: filterRowsByWarehouseScope(store.warehouses || [], params).length } as T)
+  }
+  if (url === '/outbound/code-print/records' && method === 'get') {
+    const filtered = filterRowsByWarehouseScope(store.codePrintRecords || [], params)
+    const clean = { ...params }
+    delete clean.warehouseCode
+    delete clean.warehouseCodes
+    return handled(pageRows(filtered, clean) as T)
+  }
+  if (url === '/outbound/code-print/check-unique' && method === 'get') {
+    const code = String(params.code || '')
+    const codeType = normalizeCodePrintType(String(params.type || params.codeType || ''))
+    return handled(checkPrintedCodeUnique(store, code, codeType) as T)
+  }
+  if (url === '/outbound/code-print/pallet/generate' && method === 'post') {
+    return handled(generatePrintedCodes(store, 'PALLET', body) as T)
+  }
+  if (url === '/outbound/code-print/box/generate' && method === 'post') {
+    return handled(generatePrintedCodes(store, 'BOX', body) as T)
+  }
+  if (url.startsWith('/outbound/code-print/pallet/')) {
+    const segments = url.split('/')
+    const code = decodeURIComponent(segments[4] || '')
+    if (method === 'get') return handled(searchPrintedCode(store, 'PALLET', code, params) as T)
+    if (method === 'post' && segments[5] === 'reprint') return handled(reprintCode(store, 'PALLET', code, body) as T)
+  }
+  if (url.startsWith('/outbound/code-print/box/')) {
+    const segments = url.split('/')
+    const code = decodeURIComponent(segments[4] || '')
+    if (method === 'get') return handled(searchPrintedCode(store, 'BOX', code, params) as T)
+    if (method === 'post' && segments[5] === 'reprint') return handled(reprintCode(store, 'BOX', code, body) as T)
+  }
+  return { handled: false }
+}
+
+function ensureCodePrintDemo(store: any) {
+  store.codePrintRecords ||= []
+  const demoRows = [
+    ['PALLET', 'HZ', '20260630', 1, 1],
+    ['PALLET', 'NL', '20260630', 1, 0],
+    ['BOX', 'HZ', '20260630', 1, 2],
+    ['BOX', 'NB', '20260630', 1, 0]
+  ]
+  demoRows.forEach(([type, warehouseCode, date, serial, reprintCount]) => {
+    const warehouse = warehouseByCode(warehouseCode, store.warehouses || DEMO_WAREHOUSES)
+    if (!warehouse) return
+    const middle = type === 'PALLET' ? 'TRACE' : 'BOX'
+    const code = `${warehouse.warehouse_code}${middle}${date}${String(serial).padStart(4, '0')}`
+    if (store.codePrintRecords.some((row: Row) => row.code_value === code)) return
+    store.codePrintRecords.push({
+      id: nextId(store.codePrintRecords),
+      code_id: `CODE-${type}-${warehouse.warehouse_code}-${date}-${String(serial).padStart(4, '0')}`,
+      code_type: type,
+      code_type_name: type === 'PALLET' ? '托盘码' : '箱码',
+      code_value: code,
+      warehouse_id: warehouse.id,
+      warehouse_code: warehouse.warehouse_code,
+      warehouse_name: warehouse.warehouse_name,
+      generated_date: date,
+      serial_no: String(serial).padStart(4, '0'),
+      status: 'ACTIVE',
+      reprint_flag: Number(reprintCount) > 0 ? 1 : 0,
+      first_print_time: '2026-06-30 09:10:00',
+      last_print_time: Number(reprintCount) > 0 ? '2026-06-30 10:20:00' : '2026-06-30 09:10:00',
+      reprint_count: Number(reprintCount),
+      created_by: 'wh_admin',
+      created_at: '2026-06-30 09:10:00',
+      updated_by: 'wh_admin',
+      updated_at: '2026-06-30 09:10:00'
+    })
+  })
+}
+
+function normalizeCodePrintType(value: string): 'PALLET' | 'BOX' {
+  const upper = String(value || '').toUpperCase()
+  return upper === 'BOX' ? 'BOX' : 'PALLET'
+}
+
+function generatePrintedCodes(store: any, codeType: 'PALLET' | 'BOX', body: Row) {
+  const quantity = Number(body.quantity || body.qty || 0)
+  if (!body.warehouseCode && !body.warehouse_code && !body.warehouseId) throw new Error('请选择实体仓库')
+  if (!Number.isFinite(quantity) || quantity <= 0) throw new Error('打印数量必须大于 0')
+  if (quantity > 100) throw new Error('单次打印数量不能超过 100')
+  const warehouse = resolvePrintWarehouse(store, body)
+  requireWarehouseAllowed(warehouse, body)
+  const generatedDate = codePrintDate()
+  const middle = codeType === 'PALLET' ? 'TRACE' : 'BOX'
+  const items: Row[] = []
+  let serial = getNextCodePrintSerial(store, codeType, warehouse.warehouse_code, generatedDate)
+  while (items.length < quantity) {
+    const code = `${warehouse.warehouse_code}${middle}${generatedDate}${String(serial).padStart(4, '0')}`
+    serial += 1
+    const unique = checkPrintedCodeUnique(store, code, codeType)
+    if (!unique.unique) continue
+    const row = {
+      id: nextId(store.codePrintRecords),
+      code_id: `CODE-${codeType}-${warehouse.warehouse_code}-${generatedDate}-${code.slice(-4)}`,
+      code_type: codeType,
+      code_type_name: codeType === 'PALLET' ? '托盘码' : '箱码',
+      code_value: code,
+      warehouse_id: warehouse.id,
+      warehouse_code: warehouse.warehouse_code,
+      warehouse_name: warehouse.warehouse_name,
+      generated_date: generatedDate,
+      serial_no: code.slice(-4),
+      status: 'ACTIVE',
+      reprint_flag: 0,
+      first_print_time: now(),
+      last_print_time: now(),
+      reprint_count: 0,
+      created_by: body.operator || 'wh_admin',
+      created_at: now(),
+      updated_by: body.operator || 'wh_admin',
+      updated_at: now()
+    }
+    store.codePrintRecords.unshift(row)
+    items.push(row)
+  }
+  saveStore(store)
+  return { items, total: items.length }
+}
+
+function resolvePrintWarehouse(store: any, source: Row) {
+  const code = normalizeWarehouseCode(source.warehouseCode || source.warehouse_code)
+  const warehouse = (store.warehouses || []).find((row: Row) =>
+    row.warehouse_code === code || Number(row.id) === Number(source.warehouseId || source.warehouse_id)
+  )
+  if (!warehouse) throw new Error('仓库不存在，请选择有效的实体仓库')
+  return warehouse
+}
+
+function getNextCodePrintSerial(store: any, codeType: 'PALLET' | 'BOX', warehouseCode: string, date: string) {
+  const max = (store.codePrintRecords || [])
+    .filter((row: Row) => row.code_type === codeType && row.warehouse_code === warehouseCode && row.generated_date === date)
+    .reduce((value: number, row: Row) => Math.max(value, Number(row.serial_no || String(row.code_value || '').slice(-4) || 0)), 0)
+  return max + 1
+}
+
+function checkPrintedCodeUnique(store: any, code: string, codeType: 'PALLET' | 'BOX') {
+  const value = String(code || '').trim()
+  if (!value) return { unique: false, exists: false, reason: '码值不能为空' }
+  const printed = (store.codePrintRecords || []).find((row: Row) => row.code_value === value)
+  if (printed) {
+    return { unique: false, exists: true, owner: printed, reason: `${printed.code_type_name || codeType} 已存在于打印记录` }
+  }
+  const owner = findCodeGlobalOwner(store, value, codeType)
+  if (owner) {
+    return { unique: false, exists: true, owner, reason: `${codeType === 'PALLET' ? '托盘码' : '箱码'} 已被库存/SN/绑定数据占用` }
+  }
+  return { unique: true, exists: false, reason: '' }
+}
+
+function searchPrintedCode(store: any, codeType: 'PALLET' | 'BOX', code: string, params: Row) {
+  const row = (store.codePrintRecords || []).find((item: Row) => item.code_type === codeType && item.code_value === code)
+  if (!row) throw new Error(codeType === 'PALLET' ? '托盘码不存在，无法补打' : '箱码不存在，无法补打')
+  requireWarehouseAllowed(row, params)
+  return row
+}
+
+function reprintCode(store: any, codeType: 'PALLET' | 'BOX', code: string, body: Row) {
+  const row = searchPrintedCode(store, codeType, code, body)
+  row.reprint_flag = 1
+  row.reprint_count = Number(row.reprint_count || 0) + 1
+  row.last_print_time = now()
+  row.updated_by = body.operator || 'wh_admin'
+  row.updated_at = now()
+  saveStore(store)
+  return row
+}
+
+function codePrintDate() {
+  return new Date().toISOString().slice(0, 10).replace(/-/g, '')
 }
 
 function handleImportExportMock<T>(store: any, url: string, method: string, params: Row, body: Row): { handled: true; value: T } | { handled: false; value?: never } {
@@ -3683,15 +4106,18 @@ function mockAllocationView(store: any, id: number) {
 function mockCreateOutbound(store: any, body: Row, type: string) {
   const id = Date.now()
   const orderNo = body.outboundOrderNo || `OUT${id}`
+  const warehouse = store.warehouses.find((item: Row) => item.warehouse_code === normalizeWarehouseCode(body.warehouseCode || 'HZ')) || store.warehouses[0]
+  const targetWarehouse = store.warehouses.find((item: Row) => item.warehouse_code === normalizeWarehouseCode(body.targetWarehouseCode || 'NB')) || store.warehouses[1]
   const row = {
     id,
     order_no: orderNo,
     source_order_no: body.sourceOrderNo || `${type === 'TRANSFER' ? 'STO' : 'SO'}${id}`,
     source_system: body.sourceSystem || (type === 'TRANSFER' ? 'SAP' : 'FULFILLMENT'),
     outbound_type: type,
-    warehouse_code: body.warehouseCode || 'WH-HZ-CENTRAL',
-    warehouse_name: body.warehouseCode || 'WH-HZ-CENTRAL',
-    target_warehouse_code: type === 'TRANSFER' ? (body.targetWarehouseCode || 'WH-SH-REGION') : '',
+    warehouse_code: warehouse?.warehouse_code || 'HZ',
+    warehouse_name: warehouse?.warehouse_name || '杭州仓',
+    target_warehouse_code: type === 'TRANSFER' ? (targetWarehouse?.warehouse_code || 'NB') : '',
+    target_warehouse_name: type === 'TRANSFER' ? (targetWarehouse?.warehouse_name || '宁波仓') : '',
     customer_code: type === 'TRANSFER' ? '' : (body.customerCode || 'CUST-TESLA-001'),
     customer_name: type === 'TRANSFER' ? '' : '模拟客户',
     product_code: body.productCode || 'GT3-30KD1R11001',
@@ -3717,8 +4143,8 @@ function mockCreateShippingOrderV3(store: any, body: Row) {
   const id = Date.now()
   const orderType = normalizeMockOutboundType(String(body.orderType || body.outboundType || 'SALES_OUTBOUND'))
   const orderNo = body.shipmentOrderNo || body.outboundOrderNo || body.orderNo || `${mockOutboundPrefix(orderType)}${id}`
-  const warehouse = store.warehouses.find((item: Row) => item.warehouse_code === body.warehouseCode) || store.warehouses[0]
-  const target = store.warehouses.find((item: Row) => item.warehouse_code === body.targetWarehouseCode) || store.warehouses[1]
+  const warehouse = store.warehouses.find((item: Row) => item.warehouse_code === normalizeWarehouseCode(body.warehouseCode || 'HZ')) || store.warehouses[0]
+  const target = store.warehouses.find((item: Row) => item.warehouse_code === normalizeWarehouseCode(body.targetWarehouseCode || 'NB')) || store.warehouses[1]
   const customer = store.customers.find((item: Row) => item.customer_code === body.consigneeCode || item.customer_code === body.customerCode) || store.customers[0]
   const transferType = ['WAREHOUSE_TRANSFER', 'STO_OUTBOUND'].includes(orderType)
   const inputLines = Array.isArray(body.lines) && body.lines.length
@@ -4752,6 +5178,8 @@ function mockValidateSnCollection(store: any, orderId: number, lineId: number, b
   const serials = cleanSerials(body.serialNumbers)
   const pendingReceiveQty = inboundLineSnCount(store, line, order.order_no, ['COLLECTED'])
   const remainingQty = Math.max(Number(line.planned_qty || 0) - Number(line.received_qty || 0) - pendingReceiveQty, 0)
+  ensureContainerCodeAllowed(store, String(body.palletCode || ''), 'PALLET', order.warehouse_code)
+  ensureContainerCodeAllowed(store, String(body.boxCode || ''), 'BOX', order.warehouse_code)
   const seen = new Set<string>()
   let accepted = 0
   const items = serials.map((sn) => {
@@ -5327,39 +5755,45 @@ function validateMockSingleSn(store: any, order: Row, line: Row, item: Row, sn: 
   const binding = store.packageBindings.find((bindingRow: Row) => bindingRow.sn_code === sn)
   if (row) {
     item.existingStatus = row.status
+    item.warehouseCode = row.warehouse_code
+    item.warehouseName = row.warehouse_name
+    if (row.warehouse_code && row.warehouse_code !== order.warehouse_code) {
+      markFailed(item, `SN ${sn} 已存在于【${row.warehouse_name || row.warehouse_code}】，不允许跨仓重复采集`)
+      return
+    }
     if (row.product_code !== line.product_code) {
-      markFailed(item, 'SN product does not match current inbound line')
+      markFailed(item, 'SN 已绑定其他产品，不允许重复绑定不同产品')
       return
     }
     if (row.inbound_order_no === order.order_no) {
-      markFailed(item, 'SN already collected by current ASN')
+      markFailed(item, 'SN 已在当前预期到货通知单中采集')
       return
     }
     if (row.inbound_order_no) {
-      markFailed(item, 'SN already belongs to another ASN')
+      markFailed(item, `SN 已归属于其他单据 ${row.inbound_order_no}`)
       return
     }
     if (row.inbound_order_line_id && Number(row.inbound_order_line_id) !== Number(line.id)) {
-      markFailed(item, 'SN already belongs to another inbound line')
+      markFailed(item, 'SN 已归属于其他入库明细行')
       return
     }
     if ((row.quality_status || 'QUALIFIED') !== 'QUALIFIED') {
-      markFailed(item, 'SN quality status is not qualified')
+      markFailed(item, 'SN 质量状态不合格，不允许采集')
       return
     }
     if (Number(row.locked_flag || 0) === 1) {
-      markFailed(item, 'SN is locked')
+      markFailed(item, 'SN 已锁定，不允许采集')
       return
     }
     if (row.status !== 'ISSUED') {
-      markFailed(item, `SN status is not collectable: ${row.status}`)
+      markFailed(item, `SN 当前状态为 ${row.status}，不允许采集`)
       return
     }
   } else {
     item.message = 'New SN will be created for current product'
   }
   if (binding) {
-    markFailed(item, 'SN already has pallet/box binding')
+    markFailed(item, 'SN 已存在托盘/箱码绑定关系')
   }
 }
 

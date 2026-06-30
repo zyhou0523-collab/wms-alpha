@@ -176,7 +176,7 @@ const form = reactive<Row>({
   ownerName: '杭州利沃得',
   shipFromCountry: '中国',
   sapPlant: '3060',
-  warehouseCode: 'WH-HZ-CENTRAL',
+  warehouseCode: 'HZ',
   planArrivalDate: new Date().toISOString().slice(0, 10),
   remark: ''
 })
@@ -226,7 +226,7 @@ async function openDialog() {
       ownerName: '',
       shipFromCountry: '中国',
       sapPlant: '',
-      warehouseCode: warehouses.value[0]?.warehouse_code || 'WH-HZ-CENTRAL',
+      warehouseCode: warehouses.value[0]?.warehouse_code || 'HZ',
       planArrivalDate: new Date().toISOString().slice(0, 10),
       remark: ''
     })

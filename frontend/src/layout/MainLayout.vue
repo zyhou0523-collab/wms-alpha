@@ -40,6 +40,20 @@
           </el-breadcrumb>
         </div>
         <div class="topbar-right">
+          <el-select
+            v-model="warehouse.currentWarehouseCode"
+            class="warehouse-selector"
+            size="small"
+            placeholder="仓库范围"
+            @change="handleWarehouseChange"
+          >
+            <el-option
+              v-for="item in warehouse.options"
+              :key="item.warehouse_code"
+              :label="item.warehouse_name"
+              :value="item.warehouse_code"
+            />
+          </el-select>
           <el-tag effect="plain">{{ auth.user?.role_name || 'Alpha 角色' }}</el-tag>
           <el-dropdown>
             <span class="user-entry">
@@ -55,29 +69,47 @@
         </div>
       </el-header>
       <el-main class="content">
-        <router-view />
+        <router-view :key="`${route.fullPath}-${warehouseViewKey}`" />
       </el-main>
     </el-container>
   </el-container>
 </template>
 
 <script setup lang="ts">
-import { onMounted, ref } from 'vue'
+import { onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
+import { useWarehouseStore } from '../stores/warehouse'
 import { menuApi } from '../api/services'
 
 const route = useRoute()
 const router = useRouter()
 const auth = useAuthStore()
+const warehouse = useWarehouseStore()
 const menus = ref<any[]>([])
+const warehouseViewKey = ref(0)
 
 onMounted(async () => {
   menus.value = await menuApi()
   await auth.loadMe()
+  warehouse.initFromUser(auth.user)
+  window.addEventListener('wms-warehouse-change', refreshCurrentView)
 })
 
+onUnmounted(() => {
+  window.removeEventListener('wms-warehouse-change', refreshCurrentView)
+})
+
+function handleWarehouseChange(code: string) {
+  warehouse.setCurrentWarehouse(code, auth.user?.username)
+}
+
+function refreshCurrentView() {
+  warehouseViewKey.value += 1
+}
+
 function logout() {
+  warehouse.clear(auth.user?.username)
   auth.logout()
   router.push('/login')
 }
@@ -133,6 +165,10 @@ function logout() {
   gap: 16px;
 }
 
+.warehouse-selector {
+  width: 180px;
+}
+
 .user-entry {
   display: inline-flex;
   align-items: center;
@@ -145,4 +181,3 @@ function logout() {
   background: var(--wms-bg);
 }
 </style>
-

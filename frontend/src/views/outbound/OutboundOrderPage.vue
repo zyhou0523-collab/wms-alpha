@@ -25,7 +25,7 @@
         </el-select>
       </el-form-item>
       <el-form-item label="仓库编号">
-        <el-input v-model="query.warehouseCode" clearable placeholder="WH-HZ-CENTRAL" />
+        <el-input v-model="query.warehouseCode" clearable placeholder="HZ" />
       </el-form-item>
       <el-form-item label="货主">
         <el-input v-model="query.owner" clearable placeholder="货主编码/名称" />
@@ -694,11 +694,11 @@ function openCreate() {
     sourceSystem: 'FULFILLMENT',
     relatedOrderNo: `FUL-SO-${Date.now()}`,
     salesOrderNo: `SO${Date.now()}`,
-    warehouseCode: 'WH-HZ-CENTRAL',
+    warehouseCode: 'HZ',
     ownerCode: '3060',
     ownerName: '杭州利沃得',
     consigneeCode: 'CUST-TESLA-001',
-    targetWarehouseCode: 'WH-SH-REGION',
+    targetWarehouseCode: 'NB',
     expectedShipTime: new Date(),
     requiredDeliveryTime: new Date(Date.now() + 86400000),
     lines: [
