@@ -16,12 +16,16 @@
         <van-button type="primary" size="small" :disabled="disabled" @click="confirm">确认</van-button>
       </template>
     </van-field>
+    <div v-if="lastResult" class="scan-result">
+      <span>{{ typeLabel(lastResult.type) }}</span>
+      <strong>{{ lastResult.value }}</strong>
+    </div>
   </div>
 </template>
 
 <script setup lang="ts">
 import { nextTick, onMounted, ref, watch } from 'vue'
-import { parseScanText } from '../utils/scan'
+import { isAcceptedScanType, isDuplicateScan, parseScanResult, ScanCodeType, ScanResult } from '../utils/scan'
 
 const props = withDefaults(defineProps<{
   modelValue?: string
@@ -32,7 +36,10 @@ const props = withDefaults(defineProps<{
   clearOnScan?: boolean
   minLength?: number
   errorMessage?: string
-  validator?: (value: string) => boolean | string
+  acceptedTypes?: ScanCodeType[]
+  duplicateList?: string[]
+  duplicateMessage?: string
+  validator?: (value: string, result: ScanResult) => boolean | string
 }>(), {
   modelValue: '',
   label: '扫码',
@@ -41,12 +48,16 @@ const props = withDefaults(defineProps<{
   autoFocus: true,
   clearOnScan: true,
   minLength: 1,
-  errorMessage: '扫码内容无效'
+  errorMessage: '扫码内容无效',
+  acceptedTypes: () => [],
+  duplicateList: () => [],
+  duplicateMessage: '该条码已扫描'
 })
 
 const emit = defineEmits<{
   'update:modelValue': [value: string]
   scan: [value: string]
+  scanDetail: [result: ScanResult]
   confirm: [value: string]
   clear: []
   error: [message: string]
@@ -55,6 +66,7 @@ const emit = defineEmits<{
 const rootRef = ref<HTMLElement | null>(null)
 const innerValue = ref(props.modelValue)
 const errorText = ref('')
+const lastResult = ref<ScanResult | null>(null)
 
 watch(() => props.modelValue, (value) => {
   innerValue.value = value
@@ -84,37 +96,60 @@ function fail(message: string) {
 
 function handleClear() {
   errorText.value = ''
+  lastResult.value = null
   emit('clear')
   focus()
 }
 
 function confirm() {
   if (props.disabled) return
-  const value = parseScanText(innerValue.value)
-  innerValue.value = value
+  const result = parseScanResult(innerValue.value)
+  innerValue.value = result.value
 
-  if (value.length < props.minLength) {
+  if (result.value.length < props.minLength) {
     fail(props.errorMessage)
     return
   }
-
-  const result = props.validator?.(value)
-  if (typeof result === 'string') {
-    fail(result)
+  if (!isAcceptedScanType(result.type, props.acceptedTypes)) {
+    fail(`不支持的条码类型：${typeLabel(result.type)}`)
     return
   }
-  if (result === false) {
+  if (isDuplicateScan(result.value, props.duplicateList)) {
+    fail(props.duplicateMessage)
+    return
+  }
+
+  const customResult = props.validator?.(result.value, result)
+  if (typeof customResult === 'string') {
+    fail(customResult)
+    return
+  }
+  if (customResult === false) {
     fail(props.errorMessage)
     return
   }
 
   errorText.value = ''
-  emit('scan', value)
-  emit('confirm', value)
+  lastResult.value = result
+  emit('scan', result.value)
+  emit('scanDetail', result)
+  emit('confirm', result.value)
   if (props.clearOnScan) {
     innerValue.value = ''
     emit('update:modelValue', '')
   }
   focus()
+}
+
+function typeLabel(type: ScanCodeType) {
+  return {
+    SN: 'SN',
+    BOX: '箱码',
+    PALLET: '托盘码',
+    LOCATION: '库位码',
+    DOCUMENT: '单据号',
+    PRODUCT: '产品编码',
+    UNKNOWN: '未知'
+  }[type]
 }
 </script>

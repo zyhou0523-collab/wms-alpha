@@ -1,4 +1,4 @@
-<template>
+﻿<template>
   <van-tag :type="tagType" :color="tagColor" :text-color="textColor" size="medium" round>
     {{ label || statusLabel }}
   </van-tag>
@@ -31,7 +31,7 @@ const statusMap: Record<string, { label: string; type?: 'primary' | 'success' | 
   PARTIAL_SHIPPED: { label: '部分发货', type: 'warning' },
   PENDING_ALLOC: { label: '待分配', type: 'warning' },
   PICKING: { label: '拣货中', type: 'warning' },
-  REVIEWED: { label: '已复核', color: '#0ea5e9', textColor: '#fff' },
+  REVIEWED: { label: '已拣货', color: '#0ea5e9', textColor: '#fff' },
   QUALIFIED: { label: '良品', type: 'success' },
   UNQUALIFIED: { label: '不良品', type: 'danger' },
   FROZEN: { label: '冻结', color: '#334155', textColor: '#fff' },

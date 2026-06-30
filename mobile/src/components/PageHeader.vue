@@ -19,16 +19,21 @@
 
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
+import { confirmLeaveIfDirty } from '../utils/feedback'
 
 const props = withDefaults(defineProps<{
   title: string
   back?: boolean
   backText?: string
   rightText?: string
+  dirty?: boolean
+  dirtyMessage?: string
 }>(), {
   back: false,
   backText: '',
-  rightText: ''
+  rightText: '',
+  dirty: false,
+  dirtyMessage: '当前页面有未保存内容，确认返回吗？'
 })
 
 const emit = defineEmits<{
@@ -38,8 +43,10 @@ const emit = defineEmits<{
 
 const router = useRouter()
 
-function handleBack() {
+async function handleBack() {
   emit('back')
+  const canLeave = await confirmLeaveIfDirty(props.dirty, props.dirtyMessage)
+  if (!canLeave) return
   if (props.back) router.back()
 }
 </script>

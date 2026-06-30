@@ -4,6 +4,7 @@ dist/
 build/
 mobile/node_modules/
 mobile/dist/
+mobile/.npm-cache/
 frontend/node_modules/
 frontend/dist/
 npm-debug.log*

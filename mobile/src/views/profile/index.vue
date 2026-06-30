@@ -17,12 +17,18 @@
 <script setup lang="ts">
 import { useRouter } from 'vue-router'
 import { useUserStore } from '../../stores/user'
+import { confirmAction } from '../../utils/feedback'
 import MobileTabbar from '../shared/MobileTabbar.vue'
 
 const router = useRouter()
 const userStore = useUserStore()
 
-function logout() {
+async function logout() {
+  try {
+    await confirmAction('确认退出当前移动端登录吗？', '退出登录')
+  } catch {
+    return
+  }
   userStore.logout()
   router.replace('/login')
 }
