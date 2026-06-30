@@ -74,6 +74,7 @@ function isWarehouseContextExcluded(url: string) {
     '/auth/login',
     '/auth/me',
     '/menus',
+    '/system',
     '/products/options',
     '/customers/options'
   ].some((path) => normalized === path || normalized.startsWith(`${path}/`))
