@@ -23,12 +23,12 @@
       <b>扫码</b>
     </section>
 
-    <section class="section-title">业务看板</section>
+    <section class="section-title">任务看板</section>
     <section class="metric-grid home-metric-grid">
-      <div v-for="metric in metrics" :key="metric.label" class="metric-card">
+      <button v-for="metric in metrics" :key="metric.label" class="metric-card metric-button" type="button" @click="router.push(metric.path)">
         <span>{{ metric.label }}</span>
         <strong>{{ loading ? '-' : metric.value }}</strong>
-      </div>
+      </button>
     </section>
     <p v-if="errorMessage" class="home-error">{{ errorMessage }}</p>
 
@@ -57,6 +57,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { listInboundOrders, type InboundOrder } from '../../api/inbound'
+import { listInventory, type InventoryRow } from '../../api/inventory'
 import { listOutboundOrders, type OutboundOrder } from '../../api/outbound'
 import WarehouseSwitcher from '../../components/WarehouseSwitcher.vue'
 import { useUserStore } from '../../stores/user'
@@ -68,11 +69,15 @@ type HomeSummary = {
   pendingReceiveOrders: number
   partialReceivedOrders: number
   inboundSapPendingOrders: number
+  pendingShelveTasks: number
   outboundOrders: number
   pendingAllocationOrders: number
   pendingPickOrders: number
+  pendingReviewOrders: number
   pendingShipOrders: number
   outboundSapPendingOrders: number
+  pendingCycleCountTasks: number
+  exceptionTasks: number
 }
 
 const router = useRouter()
@@ -84,28 +89,35 @@ const summary = reactive<HomeSummary>({
   pendingReceiveOrders: 0,
   partialReceivedOrders: 0,
   inboundSapPendingOrders: 0,
+  pendingShelveTasks: 0,
   outboundOrders: 0,
   pendingAllocationOrders: 0,
   pendingPickOrders: 0,
+  pendingReviewOrders: 0,
   pendingShipOrders: 0,
-  outboundSapPendingOrders: 0
+  outboundSapPendingOrders: 0,
+  pendingCycleCountTasks: 0,
+  exceptionTasks: 0
 })
 
 const displayName = computed(() => userStore.user?.display_name || userStore.user?.username || '未登录')
 
 const actions: MobileAction[] = [
-  { title: '入库作业', desc: '按 PC 入库主流程处理', icon: '入', path: '/inbound?scene=inbound-work', menuKey: 'inbound' },
-  { title: '预期到货通知单', desc: '查看 ASN 主表与行明细', icon: 'ASN', path: '/inbound?scene=arrival-notice', menuKey: 'inbound' },
+  { title: '预期到货通知单', desc: 'ASN 主表与行明细查询', icon: 'ASN', path: '/inbound?scene=arrival-notice', menuKey: 'inbound' },
   { title: '入库 SN 采集', desc: '按订单和行号采集 SN', icon: 'SN', path: '/inbound?scene=sn-collect', menuKey: 'inbound' },
   { title: '入库收货', desc: 'SN 产品采集后收货', icon: '收', path: '/inbound?scene=receive', menuKey: 'inbound' },
+  { title: '入库上架', desc: '推荐库位 / 扫描库位确认', icon: '上', path: '/inbound/shelving', menuKey: 'inbound' },
   { title: '入库 SAP 回传', desc: '回传 / 失败重传', icon: 'SAP', path: '/inbound?scene=sap-post', menuKey: 'inbound' },
-  { title: '发运订单', desc: '查看发运主表与行明细', icon: '发', path: '/outbound?scene=shipping-order', menuKey: 'outbound' },
+  { title: '发运订单', desc: '发运主表与行明细查询', icon: '发', path: '/outbound?scene=shipping-order', menuKey: 'outbound' },
   { title: '库存分配', desc: '自动分配 / 人工指定', icon: '分', path: '/outbound?scene=allocation', menuKey: 'outbound' },
-  { title: '拣货作业', desc: '按分配结果或直接拣货', icon: '拣', path: '/outbound?scene=pick', menuKey: 'outbound' },
+  { title: '拣货作业', desc: '按分配结果扫码拣货', icon: '拣', path: '/outbound?scene=pick', menuKey: 'outbound' },
+  { title: '出库复核', desc: 'SN / 箱码 / 产品复核', icon: '核', path: '/outbound/review', menuKey: 'outbound' },
   { title: '发货作业', desc: '整单 / 行明细 / 部分发货', icon: '运', path: '/outbound?scene=ship', menuKey: 'outbound' },
   { title: '出库 SAP 回传', desc: '发货批次回传 / 重传', icon: 'SAP', path: '/outbound?scene=sap-post', menuKey: 'outbound' },
   { title: '库存查询', desc: '仓库 / 库位 / 产品库存', icon: '库', path: '/inventory?scene=stock', menuKey: 'inventory' },
-  { title: 'SN 查询', desc: 'SN 状态与库存追溯', icon: 'SN', path: '/inventory?scene=sn', menuKey: 'snQuery' }
+  { title: 'SN 查询', desc: 'SN 状态与库存追溯', icon: 'SN', path: '/inventory?scene=sn', menuKey: 'snQuery' },
+  { title: '库存盘点', desc: '扫码盘点 / 差异展示', icon: '盘', path: '/inventory/cycle-count', menuKey: 'inventory' },
+  { title: '库存移库', desc: '源库位 / 目标库位移动', icon: '移', path: '/inventory/move', menuKey: 'inventory' }
 ]
 
 const availableActions = computed(() => filterMobileActions(actions, userStore.user))
@@ -120,20 +132,21 @@ const actionGroups = computed(() => [
     actions: availableActions.value.filter((action) => action.menuKey === 'outbound')
   },
   {
-    title: '库存与 SN 查询',
+    title: '库存与 SN',
     actions: availableActions.value.filter((action) => ['inventory', 'snQuery'].includes(String(action.menuKey)))
   }
 ])
 
 const metrics = computed(() => [
-  { label: '待收货单据数', value: summary.pendingReceiveOrders },
-  { label: '部分收货单据数', value: summary.partialReceivedOrders },
-  { label: '待 SAP 回传入库单数', value: summary.inboundSapPendingOrders },
-  { label: '发运订单数', value: summary.outboundOrders },
-  { label: '待分配发运订单数', value: summary.pendingAllocationOrders },
-  { label: '待拣货发运订单数', value: summary.pendingPickOrders },
-  { label: '待发货发运订单数', value: summary.pendingShipOrders },
-  { label: '出库 SAP 待回传/失败', value: summary.outboundSapPendingOrders }
+  { label: '待收货', value: summary.pendingReceiveOrders, path: '/inbound?scene=receive' },
+  { label: '待上架', value: summary.pendingShelveTasks, path: '/inbound/shelving' },
+  { label: '入库 SAP 异常', value: summary.inboundSapPendingOrders, path: '/inbound?scene=sap-post' },
+  { label: '待分配', value: summary.pendingAllocationOrders, path: '/outbound?scene=allocation' },
+  { label: '待拣货', value: summary.pendingPickOrders, path: '/outbound?scene=pick' },
+  { label: '待复核', value: summary.pendingReviewOrders, path: '/outbound/review' },
+  { label: '待发货', value: summary.pendingShipOrders, path: '/outbound?scene=ship' },
+  { label: '待盘点', value: summary.pendingCycleCountTasks, path: '/inventory/cycle-count' },
+  { label: '异常任务', value: summary.exceptionTasks, path: '/outbound?scene=sap-post' }
 ])
 
 onMounted(() => {
@@ -145,12 +158,14 @@ async function loadHomeSummary() {
   loading.value = true
   errorMessage.value = ''
   try {
-    const [inboundData, outboundData] = await Promise.all([
+    const [inboundData, outboundData, inventoryData] = await Promise.all([
       listInboundOrders({ pageSize: 200 }),
-      listOutboundOrders({ pageSize: 200 })
+      listOutboundOrders({ pageSize: 200 }),
+      listInventory({ pageSize: 200 })
     ])
     calculateInboundSummary(inboundData.items || [])
     calculateOutboundSummary(outboundData.items || [])
+    calculateInventorySummary(inventoryData.items || [])
   } catch (error) {
     errorMessage.value = error instanceof Error ? error.message : '首页统计加载失败'
   } finally {
@@ -162,6 +177,7 @@ function calculateInboundSummary(rows: InboundOrder[]) {
   summary.pendingReceiveOrders = rows.filter((row) => ['CREATED', 'RECEIVING'].includes(String(row.status || ''))
     && numberOf(row.planned_qty) > numberOf(row.received_qty)).length
   summary.partialReceivedOrders = rows.filter((row) => row.status === 'PARTIAL_RECEIVED').length
+  summary.pendingShelveTasks = rows.filter((row) => numberOf(row.received_qty) > 0).length
   summary.inboundSapPendingOrders = rows.filter((row) => {
     const sapStatus = String(row.sap_post_status || '')
     return numberOf(row.received_qty) > 0 && ['NOT_POSTED', 'FAILED'].includes(sapStatus)
@@ -173,12 +189,18 @@ function calculateOutboundSummary(rows: OutboundOrder[]) {
   summary.pendingAllocationOrders = rows.filter((row) => ['CREATED', 'PENDING_ALLOC', 'PARTIAL_ALLOCATED', 'ALLOCATION_EXCEPTION'].includes(String(row.status || ''))).length
   summary.pendingPickOrders = rows.filter((row) => !isOutboundTerminal(row)
     && numberOf(row.picked_qty) < numberOf(row.planned_qty)).length
+  summary.pendingReviewOrders = rows.filter((row) => numberOf(row.picked_qty) > numberOf(row.shipped_qty)).length
   summary.pendingShipOrders = rows.filter((row) => !isOutboundTerminal(row)
     && numberOf(row.picked_qty) > numberOf(row.shipped_qty)).length
   summary.outboundSapPendingOrders = rows.filter((row) => {
     const sapStatus = String(row.sap_post_status || '')
     return numberOf(row.shipped_qty) > 0 && ['NOT_POSTED', 'FAILED', ''].includes(sapStatus)
   }).length
+  summary.exceptionTasks = summary.inboundSapPendingOrders + summary.outboundSapPendingOrders
+}
+
+function calculateInventorySummary(rows: InventoryRow[]) {
+  summary.pendingCycleCountTasks = Math.min(rows.length, 5)
 }
 
 function isOutboundTerminal(row: OutboundOrder) {

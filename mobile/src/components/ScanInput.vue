@@ -17,7 +17,7 @@
       @keyup.enter="confirm"
     >
       <template #button>
-        <van-button type="primary" size="small" :disabled="disabled" @click="confirm">确认</van-button>
+        <van-button class="scan-confirm-btn" type="primary" size="small" :disabled="disabled" @click="confirm">确认</van-button>
       </template>
     </van-field>
     <div v-if="lastResult" class="scan-result">

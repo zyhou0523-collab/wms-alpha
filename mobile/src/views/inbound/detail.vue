@@ -240,6 +240,7 @@ const bottomActions = computed(() => {
   const collectableLine = lines.value.find((line) => isSnRequired(line) && canCollectLine(line))
   if (collectableLine) actions.push({ label: 'SN 采集', type: 'primary', handler: () => openSnCollect(collectableLine) })
   if (canReceiveOrder()) actions.push({ label: '收货', type: 'success', handler: () => openReceive() })
+  if (numberOf(current.received_qty) > 0) actions.push({ label: '上架', type: 'primary', plain: true, handler: () => router.push('/inbound/shelving') })
   if (canSapPost(current)) actions.push({ label: current.sap_post_status === 'FAILED' ? 'SAP 重传' : 'SAP 回传', type: 'warning', handler: () => sapPost() })
   else if (canRetrySap(current)) actions.push({ label: 'SAP 重传', type: 'warning', plain: true, handler: () => retrySap() })
   if (canCancelOrder(current)) actions.push({ label: '取消单据', type: 'danger', plain: true, handler: () => cancelOrder() })

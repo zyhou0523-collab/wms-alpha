@@ -108,6 +108,9 @@
           </div>
         </div>
         <div class="inline-actions card-actions" @click.stop>
+          <van-button size="small" type="primary" plain @click="openDetail(order)">SN / 详情</van-button>
+          <van-button size="small" type="success" plain @click="router.push(`/inbound/${order.id}/receive`)">收货</van-button>
+          <van-button size="small" plain @click="router.push('/inbound/shelving')">上架</van-button>
           <van-button
             v-if="canSapPost(order)"
             size="small"

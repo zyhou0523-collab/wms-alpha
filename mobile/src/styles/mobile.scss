@@ -285,6 +285,13 @@ button {
   }
 }
 
+.metric-button {
+  width: 100%;
+  border: 1px solid rgba(215, 224, 234, 0.9);
+  text-align: left;
+  cursor: pointer;
+}
+
 .home-error {
   margin: 10px 4px 0;
   color: var(--pda-red);
@@ -393,6 +400,37 @@ button {
     width: 5.6em;
     color: var(--pda-blue-dark);
     font-weight: 800;
+  }
+
+  .van-field__body {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    min-width: 0;
+  }
+
+  .van-field__control {
+    min-width: 0;
+    height: 34px;
+    line-height: 34px;
+  }
+
+  .van-field__button {
+    flex: 0 0 auto;
+    padding-left: 6px;
+  }
+
+  .scan-confirm-btn,
+  .van-field__button .van-button {
+    width: 58px;
+    height: 32px;
+    min-width: 58px;
+    min-height: 32px;
+    padding: 0;
+    border-radius: 7px;
+    font-size: 13px;
+    font-weight: 800;
+    line-height: 32px;
   }
 }
 
@@ -701,6 +739,16 @@ button {
   grid-template-columns: repeat(3, minmax(0, 1fr));
   gap: 8px;
   margin: 12px 0;
+
+  .van-button {
+    min-width: 0;
+    height: 38px;
+    min-height: 38px;
+    padding: 0 8px;
+    border-radius: 8px;
+    font-size: 13px;
+    white-space: normal;
+  }
 }
 
 .inventory-value {
@@ -800,6 +848,82 @@ button {
 
   &.van-button--disabled {
     opacity: 0.52;
+  }
+}
+
+.mobile-task-board {
+  display: grid;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.mobile-task-card {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid rgba(215, 224, 234, 0.9);
+  border-radius: 10px;
+  background: #fff;
+  box-shadow: 0 8px 22px rgba(23, 32, 51, 0.06);
+
+  h3 {
+    margin: 0 0 4px;
+    color: var(--pda-text);
+    font-size: 15px;
+    line-height: 1.35;
+    overflow-wrap: anywhere;
+  }
+
+  p {
+    margin: 0;
+    color: var(--pda-muted);
+    font-size: 12px;
+    line-height: 1.45;
+  }
+
+  strong {
+    color: var(--pda-blue);
+    font-size: 22px;
+  }
+}
+
+.pda-form-card {
+  margin: 10px 0;
+  padding: 12px;
+  border: 1px solid rgba(215, 224, 234, 0.9);
+  border-radius: 10px;
+  background: #fff;
+}
+
+.pda-form-actions {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 8px;
+  margin-top: 10px;
+
+  .van-button {
+    height: 38px;
+    min-height: 38px;
+    border-radius: 8px;
+    font-weight: 800;
+  }
+}
+
+.compact-action-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+
+  .van-button {
+    flex: 1 1 96px;
+    min-width: 0;
+    height: 34px;
+    min-height: 34px;
+    border-radius: 8px;
+    font-size: 13px;
   }
 }
 
@@ -1020,6 +1144,16 @@ button {
   .scan-field {
     .van-field__label {
       width: 4.8em;
+    }
+
+    .scan-confirm-btn,
+    .van-field__button .van-button {
+      width: 54px;
+      min-width: 54px;
+      height: 30px;
+      min-height: 30px;
+      font-size: 12px;
+      line-height: 30px;
     }
   }
 
