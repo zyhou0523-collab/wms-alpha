@@ -15,7 +15,6 @@ export interface InventoryRow {
 
 export interface WorkbenchSummary {
   pendingReceiveCount?: number
-  pendingShelveCount?: number
   pendingPickCount?: number
   pendingShipCount?: number
 }

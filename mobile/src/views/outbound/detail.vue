@@ -183,7 +183,6 @@ const bottomActions = computed(() => {
   if (canPick(current)) actions.push({ label: '拣货', type: 'primary', handler: () => openPick() })
   if (canPick(current)) actions.push({ label: '扫码拣货', type: 'primary', plain: true, handler: () => openPick() })
   if (pickingRecords.value.some(canCancelPickRecord)) actions.push({ label: '取消拣货', type: 'danger', plain: true, handler: cancelCancelablePicks })
-  if (numberOf(current.picked_qty) > numberOf(current.shipped_qty)) actions.push({ label: '复核', type: 'primary', plain: true, handler: () => router.push('/outbound/review') })
   if (canShip(current)) actions.push({ label: '发货', type: 'success', handler: () => openShip() })
   if (shipments.value.some(canCancelShipmentRecord)) actions.push({ label: '取消发货', type: 'danger', plain: true, handler: cancelCancelableShipment })
   if (canPostSap(current)) actions.push({ label: current.sap_post_status === 'FAILED' ? 'SAP 重传' : 'SAP 回传', type: 'warning', plain: true, handler: postSap })

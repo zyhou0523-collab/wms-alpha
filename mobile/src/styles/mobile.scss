@@ -384,7 +384,9 @@ button {
 }
 
 .scan-field {
-  min-height: 58px;
+  display: flex;
+  align-items: center;
+  min-height: 54px;
   border: 2px solid rgba(22, 119, 255, 0.28);
   border-radius: 8px;
   overflow: hidden;
@@ -397,19 +399,29 @@ button {
   }
 
   .van-field__label {
-    width: 5.6em;
+    flex: 0 0 72px;
+    width: 72px;
     color: var(--pda-blue-dark);
     font-weight: 800;
+  }
+
+  .van-cell__value,
+  .van-field__value {
+    flex: 1 1 auto;
+    max-width: none;
+    min-width: 0;
   }
 
   .van-field__body {
     display: flex;
     align-items: center;
     gap: 8px;
+    width: 100%;
     min-width: 0;
   }
 
   .van-field__control {
+    flex: 1 1 auto;
     min-width: 0;
     height: 34px;
     line-height: 34px;
@@ -417,20 +429,21 @@ button {
 
   .van-field__button {
     flex: 0 0 auto;
+    margin-left: auto;
     padding-left: 6px;
   }
 
   .scan-confirm-btn,
   .van-field__button .van-button {
-    width: 58px;
-    height: 32px;
-    min-width: 58px;
-    min-height: 32px;
+    width: 56px;
+    height: 30px;
+    min-width: 56px;
+    min-height: 30px;
     padding: 0;
     border-radius: 7px;
-    font-size: 13px;
+    font-size: 12px;
     font-weight: 800;
-    line-height: 32px;
+    line-height: 30px;
   }
 }
 
@@ -1143,17 +1156,18 @@ button {
 
   .scan-field {
     .van-field__label {
-      width: 4.8em;
+      flex-basis: 64px;
+      width: 64px;
     }
 
     .scan-confirm-btn,
     .van-field__button .van-button {
-      width: 54px;
-      min-width: 54px;
-      height: 30px;
-      min-height: 30px;
+      width: 52px;
+      min-width: 52px;
+      height: 28px;
+      min-height: 28px;
       font-size: 12px;
-      line-height: 30px;
+      line-height: 28px;
     }
   }
 

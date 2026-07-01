@@ -69,11 +69,9 @@ type HomeSummary = {
   pendingReceiveOrders: number
   partialReceivedOrders: number
   inboundSapPendingOrders: number
-  pendingShelveTasks: number
   outboundOrders: number
   pendingAllocationOrders: number
   pendingPickOrders: number
-  pendingReviewOrders: number
   pendingShipOrders: number
   outboundSapPendingOrders: number
   pendingCycleCountTasks: number
@@ -89,11 +87,9 @@ const summary = reactive<HomeSummary>({
   pendingReceiveOrders: 0,
   partialReceivedOrders: 0,
   inboundSapPendingOrders: 0,
-  pendingShelveTasks: 0,
   outboundOrders: 0,
   pendingAllocationOrders: 0,
   pendingPickOrders: 0,
-  pendingReviewOrders: 0,
   pendingShipOrders: 0,
   outboundSapPendingOrders: 0,
   pendingCycleCountTasks: 0,
@@ -106,12 +102,10 @@ const actions: MobileAction[] = [
   { title: '预期到货通知单', desc: 'ASN 主表与行明细查询', icon: 'ASN', path: '/inbound?scene=arrival-notice', menuKey: 'inbound' },
   { title: '入库 SN 采集', desc: '按订单和行号采集 SN', icon: 'SN', path: '/inbound?scene=sn-collect', menuKey: 'inbound' },
   { title: '入库收货', desc: 'SN 产品采集后收货', icon: '收', path: '/inbound?scene=receive', menuKey: 'inbound' },
-  { title: '入库上架', desc: '推荐库位 / 扫描库位确认', icon: '上', path: '/inbound/shelving', menuKey: 'inbound' },
   { title: '入库 SAP 回传', desc: '回传 / 失败重传', icon: 'SAP', path: '/inbound?scene=sap-post', menuKey: 'inbound' },
   { title: '发运订单', desc: '发运主表与行明细查询', icon: '发', path: '/outbound?scene=shipping-order', menuKey: 'outbound' },
   { title: '库存分配', desc: '自动分配 / 人工指定', icon: '分', path: '/outbound?scene=allocation', menuKey: 'outbound' },
   { title: '拣货作业', desc: '按分配结果扫码拣货', icon: '拣', path: '/outbound?scene=pick', menuKey: 'outbound' },
-  { title: '出库复核', desc: 'SN / 箱码 / 产品复核', icon: '核', path: '/outbound/review', menuKey: 'outbound' },
   { title: '发货作业', desc: '整单 / 行明细 / 部分发货', icon: '运', path: '/outbound?scene=ship', menuKey: 'outbound' },
   { title: '出库 SAP 回传', desc: '发货批次回传 / 重传', icon: 'SAP', path: '/outbound?scene=sap-post', menuKey: 'outbound' },
   { title: '库存查询', desc: '仓库 / 库位 / 产品库存', icon: '库', path: '/inventory?scene=stock', menuKey: 'inventory' },
@@ -139,11 +133,9 @@ const actionGroups = computed(() => [
 
 const metrics = computed(() => [
   { label: '待收货', value: summary.pendingReceiveOrders, path: '/inbound?scene=receive' },
-  { label: '待上架', value: summary.pendingShelveTasks, path: '/inbound/shelving' },
   { label: '入库 SAP 异常', value: summary.inboundSapPendingOrders, path: '/inbound?scene=sap-post' },
   { label: '待分配', value: summary.pendingAllocationOrders, path: '/outbound?scene=allocation' },
   { label: '待拣货', value: summary.pendingPickOrders, path: '/outbound?scene=pick' },
-  { label: '待复核', value: summary.pendingReviewOrders, path: '/outbound/review' },
   { label: '待发货', value: summary.pendingShipOrders, path: '/outbound?scene=ship' },
   { label: '待盘点', value: summary.pendingCycleCountTasks, path: '/inventory/cycle-count' },
   { label: '异常任务', value: summary.exceptionTasks, path: '/outbound?scene=sap-post' }
@@ -177,7 +169,6 @@ function calculateInboundSummary(rows: InboundOrder[]) {
   summary.pendingReceiveOrders = rows.filter((row) => ['CREATED', 'RECEIVING'].includes(String(row.status || ''))
     && numberOf(row.planned_qty) > numberOf(row.received_qty)).length
   summary.partialReceivedOrders = rows.filter((row) => row.status === 'PARTIAL_RECEIVED').length
-  summary.pendingShelveTasks = rows.filter((row) => numberOf(row.received_qty) > 0).length
   summary.inboundSapPendingOrders = rows.filter((row) => {
     const sapStatus = String(row.sap_post_status || '')
     return numberOf(row.received_qty) > 0 && ['NOT_POSTED', 'FAILED'].includes(sapStatus)
@@ -189,7 +180,6 @@ function calculateOutboundSummary(rows: OutboundOrder[]) {
   summary.pendingAllocationOrders = rows.filter((row) => ['CREATED', 'PENDING_ALLOC', 'PARTIAL_ALLOCATED', 'ALLOCATION_EXCEPTION'].includes(String(row.status || ''))).length
   summary.pendingPickOrders = rows.filter((row) => !isOutboundTerminal(row)
     && numberOf(row.picked_qty) < numberOf(row.planned_qty)).length
-  summary.pendingReviewOrders = rows.filter((row) => numberOf(row.picked_qty) > numberOf(row.shipped_qty)).length
   summary.pendingShipOrders = rows.filter((row) => !isOutboundTerminal(row)
     && numberOf(row.picked_qty) > numberOf(row.shipped_qty)).length
   summary.outboundSapPendingOrders = rows.filter((row) => {

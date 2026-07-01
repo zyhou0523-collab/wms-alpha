@@ -119,7 +119,6 @@
         <div class="inline-actions card-actions" @click.stop>
           <van-button size="small" type="primary" plain @click="router.push(`/outbound/${order.id}/allocation`)">分配</van-button>
           <van-button size="small" type="success" plain @click="router.push(`/outbound/${order.id}/pick`)">拣货</van-button>
-          <van-button size="small" plain @click="router.push('/outbound/review')">复核</van-button>
           <van-button size="small" type="warning" plain @click="router.push(`/outbound/${order.id}/ship`)">发货</van-button>
         </div>
       </van-cell-group>

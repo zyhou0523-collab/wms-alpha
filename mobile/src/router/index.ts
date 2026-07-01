@@ -8,13 +8,11 @@ const Inbound = () => import('../views/inbound/index.vue')
 const InboundDetail = () => import('../views/inbound/detail.vue')
 const InboundSnCollect = () => import('../views/inbound/SnCollectPage.vue')
 const InboundReceive = () => import('../views/inbound/ReceivePage.vue')
-const InboundShelving = () => import('../views/inbound/ShelvingPage.vue')
 const Outbound = () => import('../views/outbound/index.vue')
 const OutboundDetail = () => import('../views/outbound/detail.vue')
 const OutboundAllocation = () => import('../views/outbound/AllocationPage.vue')
 const OutboundPick = () => import('../views/outbound/PickPage.vue')
 const OutboundShip = () => import('../views/outbound/ShipPage.vue')
-const OutboundReview = () => import('../views/outbound/ReviewPage.vue')
 const Inventory = () => import('../views/inventory/index.vue')
 const InventoryCycleCount = () => import('../views/inventory/CycleCountPage.vue')
 const InventoryMove = () => import('../views/inventory/MovePage.vue')
@@ -25,13 +23,11 @@ const routes: RouteRecordRaw[] = [
   { path: '/login', component: Login, meta: { title: '登录', public: true } },
   { path: '/home', component: Home, meta: { title: '首页', menuKey: 'home' } },
   { path: '/inbound', component: Inbound, meta: { title: '入库', menuKey: 'inbound' } },
-  { path: '/inbound/shelving', component: InboundShelving, meta: { title: '入库上架', menuKey: 'inbound' } },
   { path: '/inbound/:id', component: InboundDetail, meta: { title: '入库单详情', menuKey: 'inbound' } },
   { path: '/inbound/:orderId/sn-collect/:lineId', component: InboundSnCollect, meta: { title: '入库 SN 采集', menuKey: 'inbound' } },
   { path: '/inbound/:orderId/receive', component: InboundReceive, meta: { title: '入库收货', menuKey: 'inbound' } },
   { path: '/inbound/:orderId/receive/:lineId', component: InboundReceive, meta: { title: '入库收货', menuKey: 'inbound' } },
   { path: '/outbound', component: Outbound, meta: { title: '出库', menuKey: 'outbound' } },
-  { path: '/outbound/review', component: OutboundReview, meta: { title: '出库复核', menuKey: 'outbound' } },
   { path: '/outbound/:id', component: OutboundDetail, meta: { title: '发运订单详情', menuKey: 'outbound' } },
   { path: '/outbound/:orderId/allocation', component: OutboundAllocation, meta: { title: '出库分配', menuKey: 'outbound' } },
   { path: '/outbound/:orderId/pick', component: OutboundPick, meta: { title: '出库拣货', menuKey: 'outbound' } },
