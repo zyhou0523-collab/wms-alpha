@@ -3,41 +3,41 @@
     <template #header>
       <div class="page-header">
         <div>
-          <div class="page-title">预期到货通知单</div>
-          <div class="muted">入库单按主表维度展示；SN 采集与收货确认分离，SAP 按收货批次回传。</div>
+          <div class="page-title">{{ t('inbound.title') }}</div>
+          <div class="muted">{{ t('inbound.subtitle') }}</div>
         </div>
       </div>
     </template>
 
     <el-form :model="query" inline label-width="104px" class="query-form">
-      <el-form-item label="通知单号">
+      <el-form-item :label="t('inbound.orderNo')">
         <el-input v-model="query.orderNo" clearable placeholder="IN202606110001" />
       </el-form-item>
-      <el-form-item label="来源单号">
+      <el-form-item :label="t('inbound.sourceOrderNo')">
         <el-input v-model="query.sourceOrderNo" clearable placeholder="MO / ASN / RMA" />
       </el-form-item>
-      <el-form-item label="订单类型">
-        <el-select v-model="query.inboundType" clearable filterable placeholder="全部" style="width: 180px">
+      <el-form-item :label="t('inbound.orderType')">
+        <el-select v-model="query.inboundType" clearable filterable :placeholder="t('common.all')" style="width: 180px">
           <el-option v-for="item in inboundTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="订单状态">
-        <el-select v-model="query.status" clearable filterable placeholder="全部" style="width: 180px">
+      <el-form-item :label="t('inbound.orderStatus')">
+        <el-select v-model="query.status" clearable filterable :placeholder="t('common.all')" style="width: 180px">
           <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="仓库编码">
+      <el-form-item :label="t('inbound.warehouseCode')">
         <el-input v-model="query.warehouseCode" clearable placeholder="HZ" />
       </el-form-item>
-      <el-form-item label="货主">
+      <el-form-item :label="t('inbound.owner')">
         <el-input v-model="query.owner" clearable placeholder="货主编码/名称" />
       </el-form-item>
-      <el-form-item label="回传 SAP">
-        <el-select v-model="query.sapPostStatus" clearable filterable placeholder="全部" style="width: 180px">
+      <el-form-item :label="t('inbound.sapPost')">
+        <el-select v-model="query.sapPostStatus" clearable filterable :placeholder="t('common.all')" style="width: 180px">
           <el-option v-for="item in sapStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="创建时间">
+      <el-form-item :label="t('inbound.createdAt')">
         <el-date-picker
           v-model="createdRange"
           type="daterange"
@@ -49,19 +49,19 @@
         />
       </el-form-item>
       <el-form-item>
-        <el-button type="primary" @click="search">查询</el-button>
-        <el-button @click="reset">重置</el-button>
+        <el-button type="primary" @click="search">{{ t('common.query') }}</el-button>
+        <el-button @click="reset">{{ t('common.reset') }}</el-button>
       </el-form-item>
     </el-form>
 
     <div class="table-toolbar">
       <div class="toolbar-left">
-        <el-button type="primary" @click="createVisible = true">新建</el-button>
-        <el-button @click="inboundImportInput?.click()">导入</el-button>
-        <el-button type="warning" plain @click="retrySelectedSap">重传 SAP</el-button>
-        <el-button @click="exportVisible = true">导出</el-button>
-        <el-button @click="load">刷新</el-button>
-        <el-button link type="primary" @click="downloadImportTemplate">导入模板</el-button>
+        <el-button type="primary" @click="createVisible = true">{{ t('common.add') }}</el-button>
+        <el-button @click="inboundImportInput?.click()">{{ t('common.import') }}</el-button>
+        <el-button type="warning" plain @click="retrySelectedSap">{{ t('common.retrySap') }}</el-button>
+        <el-button @click="exportVisible = true">{{ t('common.export') }}</el-button>
+        <el-button @click="load">{{ t('common.refresh') }}</el-button>
+        <el-button link type="primary" @click="downloadImportTemplate">{{ t('common.downloadTemplate') }}</el-button>
         <input ref="inboundImportInput" class="hidden-file-input" type="file" accept=".csv,.txt" @change="importInboundRows" />
       </div>
     </div>
@@ -106,8 +106,8 @@
               </el-table-column>
               <el-table-column label="操作" min-width="140">
                 <template #default="{ row: line }">
-                  <el-button v-if="isLineSnRequired(line)" link type="success" :disabled="!canLineCollectSn(row, line)" @click="openLineSnCollect(row, line)">采集 SN</el-button>
-                  <el-button v-if="canLineReceive(row, line)" link type="primary" @click="openLineReceive(row, line)">收货</el-button>
+                  <el-button v-if="isLineSnRequired(line)" link type="success" :disabled="!canLineCollectSn(row, line)" @click="openLineSnCollect(row, line)">{{ t('common.collectSn') }}</el-button>
+                  <el-button v-if="canLineReceive(row, line)" link type="primary" @click="openLineReceive(row, line)">{{ t('common.receive') }}</el-button>
                 </template>
               </el-table-column>
             </el-table>
@@ -152,11 +152,12 @@
       <el-table-column prop="updated_by" label="更新人" width="100" />
       <el-table-column label="操作" fixed="right" width="360">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">查看</el-button>
-          <el-button v-if="canCollectSn(row)" link type="success" @click="openSnCollect(row)">采集 SN</el-button>
-          <el-button v-if="canReceive(row)" link type="primary" @click="openReceive(row)">收货</el-button>
-          <el-button v-if="canSapPost(row)" link type="warning" @click="submitSapPost(row)">SAP 回传</el-button>
-          <el-button v-if="canCancelInbound(row)" link type="danger" @click="cancelInboundOrder(row)">取消</el-button>
+          <el-button link type="primary" @click="openDetail(row)">{{ t('common.view') }}</el-button>
+          <el-button v-if="canEdit(row)" link type="primary" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
+          <el-button v-if="canCollectSn(row)" link type="success" @click="openSnCollect(row)">{{ t('common.collectSn') }}</el-button>
+          <el-button v-if="canReceive(row)" link type="primary" @click="openReceive(row)">{{ t('common.receive') }}</el-button>
+          <el-button v-if="canSapPost(row)" link type="warning" @click="submitSapPost(row)">{{ t('common.sapPost') }}</el-button>
+          <el-button v-if="canCancelInbound(row)" link type="danger" @click="cancelInboundOrder(row)">{{ t('common.cancel') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -192,6 +193,13 @@
     v-model="createVisible"
     @success="load"
   />
+  <NewInboundOrderDialog
+    v-model="editVisible"
+    mode="edit"
+    :order-id="editDetail?.order?.id"
+    :initial-data="editDetail"
+    @success="handleEditSuccess"
+  />
 
   <el-dialog v-model="exportVisible" title="导出预期到货通知单" width="460px">
     <el-form label-width="96px">
@@ -216,13 +224,23 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { inboundService } from '../../api/services'
+import { INBOUND_ORDER_STATUS_DEFINITIONS, SAP_POST_STATUS_DEFINITIONS } from '../../constants/orderStatus'
+import {
+  canCancelInboundOrder,
+  canCollectSnInboundOrder,
+  canEditInboundOrder,
+  canPostSapInboundOrder,
+  canReceiveInboundOrder,
+  canRetrySapInboundOrder
+} from '../../constants/orderActionPermissions'
 import SnCollectDialog from './components/SnCollectDialog.vue'
 import ReceiveConfirmDialog from './components/ReceiveConfirmDialog.vue'
 import NewInboundOrderDialog from './components/NewInboundOrderDialog.vue'
+import { sapStatusLabel as i18nSapStatusLabel, statusLabel as i18nStatusLabel, useI18n } from '../../i18n'
 import { downloadTextFile, importResultHtml, parseSectionedCsv, readTextFile } from '../../utils/fileTransfer'
 
 type Row = Record<string, any>
@@ -239,12 +257,15 @@ const selectedSnCollectLineId = ref<number | null>(null)
 const snCollectMode = ref<'order' | 'line'>('order')
 const receiveVisible = ref(false)
 const createVisible = ref(false)
+const editVisible = ref(false)
+const editDetail = ref<Row | null>(null)
 const exportVisible = ref(false)
 const exportScope = ref<'QUERY' | 'SELECTED'>('QUERY')
 const inboundImportInput = ref<HTMLInputElement>()
 const selectedReceiveOrderId = ref<number | null>(null)
 const selectedReceiveLineId = ref<number | null>(null)
 const selectedRows = ref<Row[]>([])
+const { t } = useI18n()
 
 const inboundTypeOptions = [
   ['PRODUCTION', '生产入库'],
@@ -255,21 +276,15 @@ const inboundTypeOptions = [
   ['OTHER', '其他入库']
 ].map(([value, label]) => ({ value, label }))
 
-const statusOptions = [
-  ['CREATED', '待收货'],
-  ['PARTIAL_RECEIVED', '部分收货'],
-  ['RECEIVED', '完全收货'],
-  ['ON_SHELF', '已上架'],
-  ['CLOSED', '已关闭'],
-  ['CANCELED', '已取消']
-].map(([value, label]) => ({ value, label }))
+const statusOptions = computed(() => INBOUND_ORDER_STATUS_DEFINITIONS.map((item) => ({
+  value: item.value,
+  label: statusOptionLabel(i18nStatusLabel(item.value), item.legacy)
+})))
 
-const sapStatusOptions = [
-  ['NOT_POSTED', '未回传'],
-  ['SUCCESS', '回传成功'],
-  ['POSTED', '已回传'],
-  ['FAILED', '回传失败']
-].map(([value, label]) => ({ value, label }))
+const sapStatusOptions = computed(() => SAP_POST_STATUS_DEFINITIONS.map((item) => ({
+  value: item.value,
+  label: statusOptionLabel(i18nSapStatusLabel(item.value), item.legacy)
+})))
 
 onMounted(load)
 
@@ -305,6 +320,22 @@ function reset() {
 
 function openDetail(row: Row) {
   router.push(`/inbound/arrival-notices/${row.id}`)
+}
+
+async function openEdit(row: Row) {
+  const data = await inboundService.detail(Number(row.id))
+  if (!canEdit(data.order || row)) {
+    ElMessage.warning('仅创建态且未采集、未收货、未上架、未回传 SAP 成功的预期到货通知单允许编辑')
+    return
+  }
+  editDetail.value = data
+  editVisible.value = true
+}
+
+async function handleEditSuccess() {
+  editVisible.value = false
+  editDetail.value = null
+  await load()
 }
 
 function openSnCollect(row: Row) {
@@ -406,17 +437,11 @@ async function confirmExport() {
 }
 
 function canCollectSn(row: Row) {
-  const lines = row.lines || []
-  if (lines.length) {
-    return lines.some((line: Row) => canLineCollectSn(row, line))
-  }
-  const remainingCollectQty = Number(row.planned_qty || 0) - Number(row.received_qty || 0) - Number(row.pending_receive_qty || 0)
-  return !['RECEIVED', 'ON_SHELF', 'CLOSED', 'CANCELED'].includes(row.status) && remainingCollectQty > 0
+  return canCollectSnInboundOrder(row)
 }
 
 function canReceive(row: Row) {
-  return ['CREATED', 'PARTIAL_RECEIVED', 'RECEIVING'].includes(row.status)
-    && Number(row.planned_qty || 0) > Number(row.received_qty || 0)
+  return canReceiveInboundOrder(row)
 }
 
 function isLineSnRequired(line: Row) {
@@ -436,29 +461,27 @@ function lineRemainingReceiveQty(line: Row) {
 }
 
 function canLineCollectSn(order: Row, line: Row) {
-  return isLineSnRequired(line) && !['RECEIVED', 'ON_SHELF', 'CLOSED', 'CANCELED'].includes(order.status) && lineRemainingCollectQty(line) > 0
+  return canCollectSnInboundOrder(order, line)
 }
 
 function canLineReceive(order: Row, line: Row) {
-  if (!['CREATED', 'PARTIAL_RECEIVED', 'RECEIVING'].includes(order.status)) return false
-  if (isLineSnRequired(line)) return linePendingReceiveQty(line) > 0
-  return lineRemainingReceiveQty(line) > 0
+  return canReceiveInboundOrder(order, line)
 }
 
 function canSapPost(row: Row) {
-  return Number(row.pending_sap_receipt_count || 0) > 0
+  return canPostSapInboundOrder(row)
 }
 
 function canRetrySap(row: Row) {
-  return canSapPost(row) || ['FAILED', 'NOT_POSTED'].includes(row.sap_post_status)
+  return canRetrySapInboundOrder(row)
+}
+
+function canEdit(row: Row) {
+  return canEditInboundOrder(row)
 }
 
 function canCancelInbound(row: Row) {
-  return row.status === 'CREATED'
-    && Number(row.collected_qty || 0) === 0
-    && Number(row.pending_receive_qty || 0) === 0
-    && Number(row.received_qty || 0) === 0
-    && !['SUCCESS', 'POSTED'].includes(row.sap_post_status)
+  return canCancelInboundOrder(row)
 }
 
 function inboundTypeLabel(value: string) {
@@ -466,7 +489,7 @@ function inboundTypeLabel(value: string) {
 }
 
 function statusLabel(value: string) {
-  return statusOptions.find((item) => item.value === value)?.label || value || '-'
+  return i18nStatusLabel(value, value || '-')
 }
 
 function statusType(value: string) {
@@ -477,14 +500,17 @@ function statusType(value: string) {
 }
 
 function sapStatusLabel(value: string) {
-  if (!value) return '未回传'
-  return sapStatusOptions.find((item) => item.value === value)?.label || value
+  return i18nSapStatusLabel(value || 'NOT_POSTED')
 }
 
 function sapStatusType(value: string) {
   if (['POSTED', 'SUCCESS'].includes(value)) return 'success'
   if (value === 'FAILED') return 'danger'
   return 'info'
+}
+
+function statusOptionLabel(label: string, legacy?: boolean) {
+  return legacy ? t('statusMeta.compatibleLabel', { label }) : label
 }
 </script>
 

@@ -181,7 +181,9 @@ INSERT INTO sys_dict_type (dict_name, dict_type, status, remark) VALUES
 ('菜单类型', 'sys_menu_type', 'ACTIVE', '目录/菜单/按钮'),
 ('WMS 入库订单类型', 'wms_inbound_type', 'ACTIVE', '生产/备货/RMA/调拨/VMI'),
 ('WMS 出库订单类型', 'wms_outbound_type', 'ACTIVE', '销售/调拨/售后'),
-('SAP 回传状态', 'wms_sap_post_status', 'ACTIVE', '未回传/成功/失败');
+('WMS 发运订单状态', 'wms_outbound_order_status', 'ACTIVE', '主状态 + 历史兼容状态'),
+('WMS 预期到货通知单状态', 'wms_inbound_order_status', 'ACTIVE', '主状态 + 历史兼容状态'),
+('SAP 回传状态', 'wms_sap_post_status', 'ACTIVE', '未回传/成功/失败，POSTED 为兼容值');
 
 INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, dict_sort, list_class, is_default, status, remark) VALUES
 ('sys_normal_disable', '启用', 'ACTIVE', 1, 'success', 1, 'ACTIVE', ''),
@@ -196,9 +198,35 @@ INSERT INTO sys_dict_data (dict_type, dict_label, dict_value, dict_sort, list_cl
 ('wms_outbound_type', '销售出库', 'SALES', 1, 'primary', 1, 'ACTIVE', ''),
 ('wms_outbound_type', '调拨出库', 'TRANSFER', 2, 'success', 0, 'ACTIVE', ''),
 ('wms_outbound_type', '售后出库', 'AFTERSALE', 3, 'warning', 0, 'ACTIVE', ''),
+('wms_outbound_order_status', '创建', 'CREATED', 1, 'info', 1, 'ACTIVE', '主状态'),
+('wms_outbound_order_status', '部分分配', 'PARTIAL_ALLOCATED', 2, 'warning', 0, 'ACTIVE', '主状态'),
+('wms_outbound_order_status', '完全分配', 'ALLOCATED', 3, 'primary', 0, 'ACTIVE', '主状态'),
+('wms_outbound_order_status', '部分拣货', 'PARTIAL_PICKED', 4, 'warning', 0, 'ACTIVE', '主状态'),
+('wms_outbound_order_status', '完全拣货', 'PICKED', 5, 'primary', 0, 'ACTIVE', '主状态'),
+('wms_outbound_order_status', '部分发运', 'PARTIAL_SHIPPED', 6, 'warning', 0, 'ACTIVE', '主状态'),
+('wms_outbound_order_status', '完全发运', 'SHIPPED', 7, 'success', 0, 'ACTIVE', '主状态'),
+('wms_outbound_order_status', '订单关闭', 'CLOSED', 8, 'success', 0, 'ACTIVE', '主状态'),
+('wms_outbound_order_status', '订单取消', 'CANCELED', 9, 'danger', 0, 'ACTIVE', '主状态'),
+('wms_outbound_order_status', '待分配', 'PENDING_ALLOC', 101, 'warning', 0, 'ACTIVE', '兼容状态：历史待分配'),
+('wms_outbound_order_status', '拣货中', 'PICKING', 102, 'warning', 0, 'ACTIVE', '兼容状态：历史拣货中'),
+('wms_outbound_order_status', '复核中', 'REVIEWING', 103, 'warning', 0, 'ACTIVE', '兼容状态：历史复核中'),
+('wms_outbound_order_status', '已复核', 'REVIEWED', 104, 'primary', 0, 'ACTIVE', '兼容状态：历史复核完成'),
+('wms_outbound_order_status', '回传成功', 'CALLBACK_SUCCESS', 105, 'success', 0, 'ACTIVE', '兼容状态：旧回调状态，后续使用 sap_post_status'),
+('wms_outbound_order_status', '回传失败', 'CALLBACK_FAILED', 106, 'danger', 0, 'ACTIVE', '兼容状态：旧回调状态，后续使用 sap_post_status'),
+('wms_outbound_order_status', '分配异常', 'ALLOCATION_EXCEPTION', 107, 'danger', 0, 'ACTIVE', '兼容状态：历史分配异常'),
+('wms_inbound_order_status', '创建', 'CREATED', 1, 'info', 1, 'ACTIVE', '主状态'),
+('wms_inbound_order_status', '部分收货', 'PARTIAL_RECEIVED', 2, 'warning', 0, 'ACTIVE', '主状态'),
+('wms_inbound_order_status', '完全收货', 'RECEIVED', 3, 'success', 0, 'ACTIVE', '主状态'),
+('wms_inbound_order_status', '订单关闭', 'CLOSED', 4, 'success', 0, 'ACTIVE', '主状态'),
+('wms_inbound_order_status', '订单取消', 'CANCELED', 5, 'danger', 0, 'ACTIVE', '主状态'),
+('wms_inbound_order_status', '收货中', 'RECEIVING', 101, 'warning', 0, 'ACTIVE', '兼容状态：历史收货中'),
+('wms_inbound_order_status', '已绑定', 'BOUND', 102, 'primary', 0, 'ACTIVE', '兼容状态：包装绑定流程保留'),
+('wms_inbound_order_status', '已上架', 'ON_SHELF', 103, 'success', 0, 'ACTIVE', '兼容状态：上架流程保留'),
+('wms_inbound_order_status', 'SAP 回传失败', 'SAP_FAILED', 104, 'danger', 0, 'ACTIVE', '兼容状态：后续使用 sap_post_status=FAILED'),
 ('wms_sap_post_status', '未回传', 'NOT_POSTED', 1, 'info', 1, 'ACTIVE', ''),
 ('wms_sap_post_status', '回传成功', 'SUCCESS', 2, 'success', 0, 'ACTIVE', ''),
-('wms_sap_post_status', '回传失败', 'FAILED', 3, 'danger', 0, 'ACTIVE', '');
+('wms_sap_post_status', '回传失败', 'FAILED', 3, 'danger', 0, 'ACTIVE', ''),
+('wms_sap_post_status', '已回传', 'POSTED', 101, 'success', 0, 'ACTIVE', '兼容状态：历史成功值');
 
 INSERT INTO sys_config (config_name, config_key, config_value, config_type, status, remark) VALUES
 ('系统名称', 'wms.system.name', 'WMS Alpha', 'Y', 'ACTIVE', '页面标题和登录标识'),

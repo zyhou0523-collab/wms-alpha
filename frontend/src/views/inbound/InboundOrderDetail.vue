@@ -8,6 +8,7 @@
         </div>
         <div class="header-actions">
           <el-button @click="router.back()">返回</el-button>
+          <el-button v-if="canEditOrder()" type="primary" plain @click="openEdit()">编辑</el-button>
           <el-button v-if="canCancelOrder()" type="danger" plain @click="cancelOrder()">取消单据</el-button>
           <el-button v-if="canReceiveOrder()" type="success" @click="openReceive()">收货</el-button>
           <el-button type="primary" @click="load">刷新</el-button>
@@ -188,6 +189,13 @@
     :line-id="selectedReceiveLineId"
     @success="load"
   />
+  <NewInboundOrderDialog
+    v-model="editVisible"
+    mode="edit"
+    :order-id="detail.order?.id"
+    :initial-data="detail"
+    @success="handleEditSuccess"
+  />
 </template>
 
 <script setup lang="ts">
@@ -195,8 +203,17 @@ import { onMounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { inboundService } from '../../api/services'
+import {
+  canCancelInboundOrder,
+  canCancelReceiveInboundOrder,
+  canCollectSnInboundOrder,
+  canEditInboundOrder,
+  canReceiveInboundOrder
+} from '../../constants/orderActionPermissions'
 import SnCollectDialog from './components/SnCollectDialog.vue'
 import ReceiveConfirmDialog from './components/ReceiveConfirmDialog.vue'
+import NewInboundOrderDialog from './components/NewInboundOrderDialog.vue'
+import { sapStatusLabel as i18nSapStatusLabel, statusLabel as i18nStatusLabel } from '../../i18n'
 
 type Row = Record<string, any>
 
@@ -208,6 +225,7 @@ const snDialogVisible = ref(false)
 const selectedLineId = ref<number | null>(null)
 const receiveVisible = ref(false)
 const selectedReceiveLineId = ref<number | null>(null)
+const editVisible = ref(false)
 
 const inboundTypeMap: Row = {
   PRODUCTION: '生产入库',
@@ -220,7 +238,7 @@ const inboundTypeMap: Row = {
 }
 
 const statusMap: Row = {
-  CREATED: '待收货',
+  CREATED: '创建',
   PARTIAL_RECEIVED: '部分收货',
   RECEIVING: '部分收货',
   RECEIVED: '完全收货',
@@ -251,22 +269,26 @@ function openReceive(row?: Row) {
   receiveVisible.value = true
 }
 
+function openEdit() {
+  editVisible.value = true
+}
+
+async function handleEditSuccess() {
+  editVisible.value = false
+  await load()
+}
+
 function canReceiveOrder() {
-  const orderStatus = detail.value.order?.status
-  return ['CREATED', 'PARTIAL_RECEIVED', 'RECEIVING'].includes(orderStatus)
-    && (detail.value.details || []).some((row: Row) => canReceiveLine(row))
+  const order = detail.value.order || {}
+  return canReceiveInboundOrder({ ...order, lines: detail.value.details || [] })
 }
 
 function canReceiveLine(row: Row) {
-  const orderStatus = detail.value.order?.status
-  if (!['CREATED', 'PARTIAL_RECEIVED', 'RECEIVING'].includes(orderStatus)) return false
-  if (isSnRequired(row)) return Number(row.pending_receive_qty || 0) > 0
-  return receiveRemainingQty(row) > 0
+  return canReceiveInboundOrder(detail.value.order || {}, row)
 }
 
 function canCollectSn(row: Row) {
-  const orderStatus = detail.value.order?.status
-  return isSnRequired(row) && !['CLOSED', 'CANCELED', 'SAP_FAILED', 'RECEIVED'].includes(orderStatus) && remainingQty(row) > 0
+  return canCollectSnInboundOrder(detail.value.order || {}, row)
 }
 
 function isSnRequired(row: Row) {
@@ -324,17 +346,24 @@ function canCancelOrder() {
     ['COLLECTED', 'RECEIVED', 'ON_SHELF'].includes(row.status)
   )
   const hasReceipt = (detail.value.receiptRecords || []).some((row: Row) => row.status !== 'CANCELED')
-  return order.status === 'CREATED'
-    && !hasCollectedSn
-    && !hasReceipt
-    && Number(order.received_qty || 0) === 0
-    && !['SUCCESS', 'POSTED'].includes(order.sap_post_status)
+  return canCancelInboundOrder(order) && !hasCollectedSn && !hasReceipt
+}
+
+function canEditOrder() {
+  const order = detail.value.order || {}
+  const hasCollectedSn = (detail.value.serialNumbers || []).some((row: Row) =>
+    ['COLLECTED', 'RECEIVED', 'ON_SHELF'].includes(row.status)
+  )
+  const hasReceipt = (detail.value.receiptRecords || []).some((row: Row) => row.status !== 'CANCELED')
+  return canEditInboundOrder(order) && !hasCollectedSn && !hasReceipt
 }
 
 function canCancelReceipt(row: Row) {
-  return !['CANCELED'].includes(row.status)
-    && !['SUCCESS', 'POSTED'].includes(row.sap_post_status)
-    && Number(row.receive_qty || 0) > 0
+  return canCancelReceiveInboundOrder({
+    ...row,
+    status: detail.value.order?.status,
+    receipt_status: row.status
+  })
 }
 
 function inboundTypeLabel(value: string) {
@@ -342,7 +371,7 @@ function inboundTypeLabel(value: string) {
 }
 
 function statusLabel(value: string) {
-  return statusMap[value] || value || '-'
+  return i18nStatusLabel(value, statusMap[value] || value || '-')
 }
 
 function statusType(value: string) {
@@ -353,10 +382,7 @@ function statusType(value: string) {
 }
 
 function sapStatusLabel(value: string) {
-  if (!value || value === 'NOT_POSTED') return '未回传'
-  if (['POSTED', 'SUCCESS'].includes(value)) return '已回传'
-  if (value === 'FAILED') return '回传失败'
-  return value
+  return i18nSapStatusLabel(value || 'NOT_POSTED')
 }
 
 function sapStatusType(value: string) {

@@ -1,35 +1,46 @@
 <template>
   <div class="login-page">
     <div class="login-panel">
-      <div class="login-title">新能源 WMS Alpha</div>
-      <div class="login-subtitle">核心业务原型验证系统</div>
+      <div class="login-locale">
+        <el-select v-model="languageValue" size="small" :aria-label="t('common.language')">
+          <el-option v-for="item in supportedLocales" :key="item.value" :label="item.label" :value="item.value" />
+        </el-select>
+      </div>
+      <div class="login-title">{{ t('login.title') }}</div>
+      <div class="login-subtitle">{{ t('login.subtitle') }}</div>
       <el-form :model="form" label-position="top" @keyup.enter="submit">
-        <el-form-item label="账号">
+        <el-form-item :label="t('login.username')">
           <el-input v-model="form.username" size="large" placeholder="admin" />
         </el-form-item>
-        <el-form-item label="密码">
+        <el-form-item :label="t('login.password')">
           <el-input v-model="form.password" size="large" show-password placeholder="admin123" />
         </el-form-item>
         <el-button class="login-button" type="primary" size="large" :loading="loading" @click="submit">
-          登录
+          {{ t('login.submit') }}
         </el-button>
       </el-form>
       <div class="account-list">
-        默认账号：admin/admin123，wh_admin/123456，manager/123456
+        {{ t('login.defaultAccounts') }}
       </div>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { useRouter } from 'vue-router'
 import { useAuthStore } from '../../stores/auth'
+import { type LocaleCode, useI18n } from '../../i18n'
 
 const router = useRouter()
 const auth = useAuthStore()
 const loading = ref(false)
 const form = reactive({ username: 'admin', password: 'admin123' })
+const { locale, setLocale, supportedLocales, t } = useI18n()
+const languageValue = computed({
+  get: () => locale.value,
+  set: (value: LocaleCode) => setLocale(value)
+})
 
 async function submit() {
   loading.value = true
@@ -65,6 +76,16 @@ async function submit() {
 .login-title {
   font-size: 26px;
   font-weight: 800;
+}
+
+.login-locale {
+  display: flex;
+  justify-content: flex-end;
+  margin-bottom: 10px;
+}
+
+.login-locale :deep(.el-select) {
+  width: 132px;
 }
 
 .login-subtitle {

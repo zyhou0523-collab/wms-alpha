@@ -8,8 +8,42 @@ import {
   warehouseByCode,
   type WarehouseContext
 } from '../utils/warehouseAccess'
+import {
+  canAllocateOutboundOrder,
+  canCancelAllocationOutboundOrder,
+  canCancelInboundOrder,
+  canCancelOutboundOrder,
+  canCancelPickOutboundOrder,
+  canCancelReceiveInboundOrder,
+  canCancelShipOutboundOrder,
+  canCloseOutboundOrder,
+  canCollectSnInboundOrder,
+  canEditInboundOrder,
+  canEditOutboundOrder,
+  canPickOutboundOrder,
+  canPostSapInboundOrder,
+  canPostSapOutboundOrder,
+  canReceiveInboundOrder,
+  canShipOutboundOrder
+} from '../constants/orderActionPermissions'
 
 type Row = Record<string, any>
+
+function failOutboundAction(store: any, order: Row, action: string, operator: string, message: string): never {
+  addOutboundOperationLog(store, order?.order_no || '', action, operator || 'admin', 'FAILED', message)
+  saveStore(store)
+  throw new Error(message)
+}
+
+function failInboundAction(store: any, order: Row, action: string, operator: string, message: string): never {
+  addOperationLog(store, order?.order_no || '', action, operator || 'admin', 'FAILED', message)
+  saveStore(store)
+  throw new Error(message)
+}
+
+function currentStatusText(order: Row) {
+  return order?.status || '空'
+}
 
 function scopedWarehouseCodes(paramsOrData: Row = {}) {
   const context = paramsOrData.warehouseContext as WarehouseContext | undefined
@@ -263,7 +297,7 @@ function seed() {
     shelved_qty: i < 3 && i !== 0 ? 10 + i : 0,
     sap_material_doc_no: i < 3 && i !== 0 ? `500000000${i + 1}` : '',
     sap_post_status: i < 3 && i !== 0 ? 'POSTED' : '',
-    status: i === 0 ? 'CREATED' : i === 1 ? 'RECEIVING' : i === 2 ? 'BOUND' : i < 5 ? 'CLOSED' : i < 7 ? 'RECEIVING' : 'CREATED',
+    status: i === 9 ? 'CANCELED' : i === 0 ? 'CREATED' : i === 1 ? 'RECEIVED' : i === 2 ? 'ON_SHELF' : i < 5 ? 'CLOSED' : i < 7 ? 'PARTIAL_RECEIVED' : 'CREATED',
     created_at: `2026-06-${String(11 - i).padStart(2, '0')} 09:00:00`
   }))
   inboundOrders.unshift(
@@ -374,7 +408,14 @@ function seed() {
     }
     return lines
   })
-  inboundOrderLines.forEach((line) => refreshInboundLineStatus(line))
+  inboundOrderLines.forEach((line) => {
+    const order = inboundOrders.find((item) => Number(item.id) === Number(line.order_id))
+    if (order?.status === 'CANCELED') {
+      line.status = 'CANCELED'
+      return
+    }
+    refreshInboundLineStatus(line)
+  })
   syncInboundHeaderQty(inboundOrders, inboundOrderLines)
   syncOutboundHeaderQty(outboundOrders, outboundOrderLines)
 
@@ -591,7 +632,50 @@ function seed() {
   const systemDictTypes = [
     { id: 1, dict_name: '系统状态', dict_type: 'sys_normal_disable', status: 'ACTIVE', remark: '启用/停用' },
     { id: 2, dict_name: 'WMS 入库订单类型', dict_type: 'wms_inbound_type', status: 'ACTIVE', remark: '入库类型' },
-    { id: 3, dict_name: 'WMS 出库订单类型', dict_type: 'wms_outbound_type', status: 'ACTIVE', remark: '出库类型' }
+    { id: 3, dict_name: 'WMS 出库订单类型', dict_type: 'wms_outbound_type', status: 'ACTIVE', remark: '出库类型' },
+    { id: 4, dict_name: 'WMS 发运订单状态', dict_type: 'wms_outbound_order_status', status: 'ACTIVE', remark: '主状态 + 历史兼容状态' },
+    { id: 5, dict_name: 'WMS 预期到货通知单状态', dict_type: 'wms_inbound_order_status', status: 'ACTIVE', remark: '主状态 + 历史兼容状态' },
+    { id: 6, dict_name: 'SAP 回传状态', dict_type: 'wms_sap_post_status', status: 'ACTIVE', remark: '未回传/成功/失败，POSTED 为兼容值' }
+  ]
+  const systemDictData = [
+    { id: 1, dict_type: 'sys_normal_disable', dict_label: '启用', dict_value: 'ACTIVE', dict_sort: 1, list_class: 'success', is_default: 1, status: 'ACTIVE', remark: '' },
+    { id: 2, dict_type: 'sys_normal_disable', dict_label: '停用', dict_value: 'DISABLED', dict_sort: 2, list_class: 'danger', is_default: 0, status: 'ACTIVE', remark: '' },
+    { id: 3, dict_type: 'wms_inbound_type', dict_label: '生产入库', dict_value: 'PRODUCTION', dict_sort: 1, list_class: 'primary', is_default: 1, status: 'ACTIVE', remark: '' },
+    { id: 4, dict_type: 'wms_inbound_type', dict_label: '备货入库', dict_value: 'STOCKING', dict_sort: 2, list_class: 'success', is_default: 0, status: 'ACTIVE', remark: '' },
+    { id: 5, dict_type: 'wms_inbound_type', dict_label: '售后 RMA 入库', dict_value: 'RMA', dict_sort: 3, list_class: 'warning', is_default: 0, status: 'ACTIVE', remark: '' },
+    { id: 6, dict_type: 'wms_inbound_type', dict_label: '调拨入库', dict_value: 'TRANSFER', dict_sort: 4, list_class: 'info', is_default: 0, status: 'ACTIVE', remark: '' },
+    { id: 7, dict_type: 'wms_outbound_type', dict_label: '销售出库', dict_value: 'SALES', dict_sort: 1, list_class: 'primary', is_default: 1, status: 'ACTIVE', remark: '' },
+    { id: 8, dict_type: 'wms_outbound_type', dict_label: '调拨出库', dict_value: 'TRANSFER', dict_sort: 2, list_class: 'success', is_default: 0, status: 'ACTIVE', remark: '' },
+    { id: 9, dict_type: 'wms_outbound_type', dict_label: '售后出库', dict_value: 'AFTERSALE', dict_sort: 3, list_class: 'warning', is_default: 0, status: 'ACTIVE', remark: '' },
+    { id: 101, dict_type: 'wms_outbound_order_status', dict_label: '创建', dict_value: 'CREATED', dict_sort: 1, list_class: 'info', is_default: 1, status: 'ACTIVE', remark: '主状态' },
+    { id: 102, dict_type: 'wms_outbound_order_status', dict_label: '部分分配', dict_value: 'PARTIAL_ALLOCATED', dict_sort: 2, list_class: 'warning', is_default: 0, status: 'ACTIVE', remark: '主状态' },
+    { id: 103, dict_type: 'wms_outbound_order_status', dict_label: '完全分配', dict_value: 'ALLOCATED', dict_sort: 3, list_class: 'primary', is_default: 0, status: 'ACTIVE', remark: '主状态' },
+    { id: 104, dict_type: 'wms_outbound_order_status', dict_label: '部分拣货', dict_value: 'PARTIAL_PICKED', dict_sort: 4, list_class: 'warning', is_default: 0, status: 'ACTIVE', remark: '主状态' },
+    { id: 105, dict_type: 'wms_outbound_order_status', dict_label: '完全拣货', dict_value: 'PICKED', dict_sort: 5, list_class: 'primary', is_default: 0, status: 'ACTIVE', remark: '主状态' },
+    { id: 106, dict_type: 'wms_outbound_order_status', dict_label: '部分发运', dict_value: 'PARTIAL_SHIPPED', dict_sort: 6, list_class: 'warning', is_default: 0, status: 'ACTIVE', remark: '主状态' },
+    { id: 107, dict_type: 'wms_outbound_order_status', dict_label: '完全发运', dict_value: 'SHIPPED', dict_sort: 7, list_class: 'success', is_default: 0, status: 'ACTIVE', remark: '主状态' },
+    { id: 108, dict_type: 'wms_outbound_order_status', dict_label: '订单关闭', dict_value: 'CLOSED', dict_sort: 8, list_class: 'success', is_default: 0, status: 'ACTIVE', remark: '主状态' },
+    { id: 109, dict_type: 'wms_outbound_order_status', dict_label: '订单取消', dict_value: 'CANCELED', dict_sort: 9, list_class: 'danger', is_default: 0, status: 'ACTIVE', remark: '主状态' },
+    { id: 201, dict_type: 'wms_outbound_order_status', dict_label: '待分配', dict_value: 'PENDING_ALLOC', dict_sort: 101, list_class: 'warning', is_default: 0, status: 'ACTIVE', remark: '兼容状态：历史待分配' },
+    { id: 202, dict_type: 'wms_outbound_order_status', dict_label: '拣货中', dict_value: 'PICKING', dict_sort: 102, list_class: 'warning', is_default: 0, status: 'ACTIVE', remark: '兼容状态：历史拣货中' },
+    { id: 203, dict_type: 'wms_outbound_order_status', dict_label: '复核中', dict_value: 'REVIEWING', dict_sort: 103, list_class: 'warning', is_default: 0, status: 'ACTIVE', remark: '兼容状态：历史复核中' },
+    { id: 204, dict_type: 'wms_outbound_order_status', dict_label: '已复核', dict_value: 'REVIEWED', dict_sort: 104, list_class: 'primary', is_default: 0, status: 'ACTIVE', remark: '兼容状态：历史复核完成' },
+    { id: 205, dict_type: 'wms_outbound_order_status', dict_label: '回传成功', dict_value: 'CALLBACK_SUCCESS', dict_sort: 105, list_class: 'success', is_default: 0, status: 'ACTIVE', remark: '兼容状态：旧回调状态，后续使用 sap_post_status' },
+    { id: 206, dict_type: 'wms_outbound_order_status', dict_label: '回传失败', dict_value: 'CALLBACK_FAILED', dict_sort: 106, list_class: 'danger', is_default: 0, status: 'ACTIVE', remark: '兼容状态：旧回调状态，后续使用 sap_post_status' },
+    { id: 207, dict_type: 'wms_outbound_order_status', dict_label: '分配异常', dict_value: 'ALLOCATION_EXCEPTION', dict_sort: 107, list_class: 'danger', is_default: 0, status: 'ACTIVE', remark: '兼容状态：历史分配异常' },
+    { id: 301, dict_type: 'wms_inbound_order_status', dict_label: '创建', dict_value: 'CREATED', dict_sort: 1, list_class: 'info', is_default: 1, status: 'ACTIVE', remark: '主状态' },
+    { id: 302, dict_type: 'wms_inbound_order_status', dict_label: '部分收货', dict_value: 'PARTIAL_RECEIVED', dict_sort: 2, list_class: 'warning', is_default: 0, status: 'ACTIVE', remark: '主状态' },
+    { id: 303, dict_type: 'wms_inbound_order_status', dict_label: '完全收货', dict_value: 'RECEIVED', dict_sort: 3, list_class: 'success', is_default: 0, status: 'ACTIVE', remark: '主状态' },
+    { id: 304, dict_type: 'wms_inbound_order_status', dict_label: '订单关闭', dict_value: 'CLOSED', dict_sort: 4, list_class: 'success', is_default: 0, status: 'ACTIVE', remark: '主状态' },
+    { id: 305, dict_type: 'wms_inbound_order_status', dict_label: '订单取消', dict_value: 'CANCELED', dict_sort: 5, list_class: 'danger', is_default: 0, status: 'ACTIVE', remark: '主状态' },
+    { id: 401, dict_type: 'wms_inbound_order_status', dict_label: '收货中', dict_value: 'RECEIVING', dict_sort: 101, list_class: 'warning', is_default: 0, status: 'ACTIVE', remark: '兼容状态：历史收货中' },
+    { id: 402, dict_type: 'wms_inbound_order_status', dict_label: '已绑定', dict_value: 'BOUND', dict_sort: 102, list_class: 'primary', is_default: 0, status: 'ACTIVE', remark: '兼容状态：包装绑定流程保留' },
+    { id: 403, dict_type: 'wms_inbound_order_status', dict_label: '已上架', dict_value: 'ON_SHELF', dict_sort: 103, list_class: 'success', is_default: 0, status: 'ACTIVE', remark: '兼容状态：上架流程保留' },
+    { id: 404, dict_type: 'wms_inbound_order_status', dict_label: 'SAP 回传失败', dict_value: 'SAP_FAILED', dict_sort: 104, list_class: 'danger', is_default: 0, status: 'ACTIVE', remark: '兼容状态：后续使用 sap_post_status=FAILED' },
+    { id: 501, dict_type: 'wms_sap_post_status', dict_label: '未回传', dict_value: 'NOT_POSTED', dict_sort: 1, list_class: 'info', is_default: 1, status: 'ACTIVE', remark: '主状态' },
+    { id: 502, dict_type: 'wms_sap_post_status', dict_label: '回传成功', dict_value: 'SUCCESS', dict_sort: 2, list_class: 'success', is_default: 0, status: 'ACTIVE', remark: '主状态' },
+    { id: 503, dict_type: 'wms_sap_post_status', dict_label: '回传失败', dict_value: 'FAILED', dict_sort: 3, list_class: 'danger', is_default: 0, status: 'ACTIVE', remark: '主状态' },
+    { id: 504, dict_type: 'wms_sap_post_status', dict_label: '已回传', dict_value: 'POSTED', dict_sort: 101, list_class: 'success', is_default: 0, status: 'ACTIVE', remark: '兼容状态：历史成功值' }
   ]
   const systemConfigs = [
     { id: 1, config_name: '系统名称', config_key: 'wms.system.name', config_value: 'WMS Alpha', config_type: 'Y', status: 'ACTIVE' },
@@ -661,6 +745,7 @@ function seed() {
     systemPosts,
     systemMenus,
     systemDictTypes,
+    systemDictData,
     systemConfigs,
     systemNotices,
     systemLoginLogs,
@@ -678,7 +763,7 @@ function getStore() {
     localStorage.setItem('wms_mock_store', JSON.stringify(data))
     return data
   }
-  const data = seed()
+  const data = normalizeStore(seed())
   localStorage.setItem('wms_mock_store', JSON.stringify(data))
   return data
 }
@@ -712,6 +797,31 @@ function ensureMockConfigs(store: any) {
   defaultMockConfigs().forEach((config) => {
     const existing = store.mockConfigs.find((item: Row) => item.interface_name === config.interface_name)
     if (!existing) store.mockConfigs.push({ ...config, id: nextId(store.mockConfigs) })
+  })
+}
+
+function ensureStatusGovernanceDictionaries(store: any, fresh: any) {
+  upsertMockRows(store, fresh, 'systemDictTypes', (row) => row.dict_type)
+  upsertMockRows(store, fresh, 'systemDictData', (row) => `${row.dict_type}::${row.dict_value}`)
+}
+
+function upsertMockRows(store: any, fresh: any, collection: string, keyOf: (row: Row) => unknown) {
+  const source = Array.isArray(fresh[collection]) ? fresh[collection] : []
+  store[collection] = Array.isArray(store[collection]) ? store[collection] : []
+  const keyMap = new Map<string, Row>()
+  store[collection].forEach((row: Row) => {
+    const key = String(keyOf(row) || '')
+    if (key) keyMap.set(key, row)
+  })
+  source.forEach((row: Row) => {
+    const key = String(keyOf(row) || '')
+    if (!key) return
+    const existing = keyMap.get(key)
+    if (existing) {
+      Object.assign(existing, { ...row, id: existing.id })
+      return
+    }
+    store[collection].push({ ...row, id: row.id || nextId(store[collection]) })
   })
 }
 
@@ -806,6 +916,7 @@ const endpointMap: Record<string, string> = {
   '/system/depts': 'systemDepts',
   '/system/posts': 'systemPosts',
   '/system/dict-types': 'systemDictTypes',
+  '/system/dict-data': 'systemDictData',
   '/system/configs': 'systemConfigs',
   '/system/notices': 'systemNotices',
   '/system/loginlogs': 'systemLoginLogs',
@@ -1432,6 +1543,7 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
       if (method === 'post' && lineAction === 'cancel-sn-collection') return runMockAction(store, id, 'CANCEL_SN_COLLECTION', (config.data || {}) as Row, () => mockCancelSnCollection(store, id, lineId, (config.data || {}) as Row)) as T
     }
     if (method === 'get' && !action) return productionDetail(store, id) as T
+    if (method === 'put' && !action) return mockUpdateInboundOrder(store, id, (config.data || {}) as Row) as T
     if (method === 'post' && action === 'cancel') return mockCancelInboundOrder(store, id, (config.data || {}) as Row) as T
     if (method === 'post' && action === 'receipts' && segments[url.startsWith('/inbound-orders/') ? 5 : 6] === 'cancel') {
       const receiptId = url.startsWith('/inbound-orders/') ? Number(segments[4]) : Number(segments[5])
@@ -1583,6 +1695,18 @@ function toSnake(value: string) {
   return value.replace(/[A-Z]/g, (letter) => `_${letter.toLowerCase()}`)
 }
 
+function isInternalQueryParam(key: string) {
+  return [
+    'pageNum',
+    'pageSize',
+    'warehouseCodes',
+    'warehouseContext',
+    'authorizedWarehouseCodes',
+    'selectedWarehouseCode',
+    'isAllWarehouse'
+  ].includes(key)
+}
+
 function normalizeStore(store: any) {
   const fresh = seed()
   const needsProductionInboundSeed = store.__wmsAlphaMockVersion !== 'sn-collection-v3'
@@ -1609,6 +1733,8 @@ function normalizeStore(store: any) {
   store.systemPosts ||= fresh.systemPosts
   store.systemMenus ||= fresh.systemMenus
   store.systemDictTypes ||= fresh.systemDictTypes
+  store.systemDictData ||= fresh.systemDictData
+  ensureStatusGovernanceDictionaries(store, fresh)
   store.systemConfigs ||= fresh.systemConfigs
   store.systemNotices ||= fresh.systemNotices
   store.systemLoginLogs ||= fresh.systemLoginLogs
@@ -1719,12 +1845,15 @@ function normalizeStore(store: any) {
   }
   ensureOutboundMockStore(store)
   ensureShippingOrderV3Demo(store)
+  ensureOutboundAllocationShipDemo(store)
   ensureOutboundMockLines(store)
   ensureMockOwnerOnStock(store)
   ensureMixedInboundDemo(store)
   ensureInboundShipFromCountries(store)
   ensureWarehouseAuthorizationDemo(store)
   ensureCodePrintDemo(store)
+  normalizeOutboundAllocationStatuses(store)
+  normalizeDemoOrderStatuses(store)
   return store
 }
 
@@ -2289,14 +2418,14 @@ function ensureOutboundMockStore(store: any) {
   ;['0001', '0002', '0003', '0004', '0005'].forEach((n) => store.serialNumbers.unshift(mockSn(`SN-SHIP-${n}`, product, central, 'A01-01-01', 'SHIPPED', 'QUALIFIED', 0, 'OUT202606120005', 1)))
 
   const orders = [
-    { id: 8801, order_no: 'OUT202606120001', source_order_no: 'SO202606120001', source_system: 'FULFILLMENT', outbound_type: 'SALES', ...central, customer_code: 'CUST-TESLA-001', customer_name: 'Tesla Energy China', ...product, planned_qty: 5, allocated_qty: 0, picked_qty: 0, review_qty: 0, shipped_qty: 0, status: 'PENDING_ALLOC', created_at: '2026-06-12 09:00:00' },
+    { id: 8801, order_no: 'OUT202606120001', source_order_no: 'SO202606120001', source_system: 'FULFILLMENT', outbound_type: 'SALES', ...central, customer_code: 'CUST-TESLA-001', customer_name: 'Tesla Energy China', ...product, planned_qty: 5, allocated_qty: 0, picked_qty: 0, review_qty: 0, shipped_qty: 0, status: 'CREATED', sap_post_status: 'NOT_POSTED', created_at: '2026-06-12 09:00:00' },
     { id: 8802, order_no: 'OUT202606120002', source_order_no: 'SO202606120002', source_system: 'FULFILLMENT', outbound_type: 'SALES', ...central, customer_code: 'CUST-BYD-002', customer_name: '比亚迪储能事业部', ...product, planned_qty: 4, allocated_qty: 4, picked_qty: 0, review_qty: 0, shipped_qty: 0, status: 'ALLOCATED', created_at: '2026-06-12 08:30:00' },
-    { id: 8803, order_no: 'OUT202606120003', source_order_no: 'SO202606120003', source_system: 'FULFILLMENT', outbound_type: 'SALES', ...central, customer_code: 'CUST-SG-003', customer_name: 'State Grid Demo', ...product, planned_qty: 3, allocated_qty: 3, picked_qty: 3, review_qty: 3, shipped_qty: 0, status: 'REVIEWED', created_at: '2026-06-11 14:00:00' },
-    { id: 8804, order_no: 'OUT202606120004', source_order_no: 'STO202606120004', source_system: 'SAP', outbound_type: 'TRANSFER', ...central, target_warehouse_code: sh.warehouse_code, target_warehouse_name: sh.warehouse_name, customer_code: '', customer_name: '', ...product, planned_qty: 6, allocated_qty: 0, picked_qty: 0, review_qty: 0, shipped_qty: 0, status: 'PENDING_ALLOC', created_at: '2026-06-12 09:20:00' },
-    { id: 8805, order_no: 'OUT202606120005', source_order_no: 'STO202606120005', source_system: 'SAP', outbound_type: 'TRANSFER', ...central, target_warehouse_code: sh.warehouse_code, target_warehouse_name: sh.warehouse_name, customer_code: '', customer_name: '', ...product, planned_qty: 5, allocated_qty: 5, picked_qty: 5, review_qty: 5, shipped_qty: 5, status: 'CALLBACK_SUCCESS', logistics_company: 'SF', tracking_no: 'SF202606120005', sap_material_doc_no: '4900000005', created_at: '2026-06-10 11:00:00' },
-    { id: 8806, order_no: 'OUT202606120006', source_order_no: 'AS202606120006', source_system: 'CRM', outbound_type: 'AFTERSALE', warehouse_code: 'WH-SZ-AFTERSALE', warehouse_name: '深圳售后仓', customer_code: 'CUST-TESLA-001', customer_name: 'Tesla Energy China', product_code: 'BMS-MAIN-001', product_name: 'BMS 主控板', planned_qty: 2, allocated_qty: 2, picked_qty: 1, review_qty: 0, shipped_qty: 0, status: 'PICKING', created_at: '2026-06-12 09:40:00' },
-    { id: 8807, order_no: 'OUT202606120007', source_order_no: 'SO202606120007', source_system: 'FULFILLMENT', outbound_type: 'SALES', warehouse_code: sh.warehouse_code, warehouse_name: sh.warehouse_name, customer_code: 'CUST-EU-004', customer_name: 'EU Solar Partner', ...product, planned_qty: 2, allocated_qty: 2, picked_qty: 2, review_qty: 2, shipped_qty: 2, status: 'CALLBACK_SUCCESS', logistics_company: 'DHL', tracking_no: 'DHL202606120007', sap_material_doc_no: '4900000007', created_at: '2026-06-09 10:00:00' },
-    { id: 8808, order_no: 'OUT202606120008', source_order_no: 'SO202606120008', source_system: 'FULFILLMENT', outbound_type: 'SALES', warehouse_code: 'WH-GZ-3PL', warehouse_name: '广州第三方仓', customer_code: 'CUST-AU-005', customer_name: 'AU Energy Storage', ...product, planned_qty: 1, allocated_qty: 1, picked_qty: 1, review_qty: 1, shipped_qty: 1, status: 'CALLBACK_FAILED', logistics_company: 'SF', tracking_no: 'SF202606120008', created_at: '2026-06-08 10:00:00' }
+    { id: 8803, order_no: 'OUT202606120003', source_order_no: 'SO202606120003', source_system: 'FULFILLMENT', outbound_type: 'SALES', ...central, customer_code: 'CUST-SG-003', customer_name: 'State Grid Demo', ...product, planned_qty: 3, allocated_qty: 3, picked_qty: 3, review_qty: 3, shipped_qty: 0, status: 'PICKED', sap_post_status: 'NOT_POSTED', created_at: '2026-06-11 14:00:00' },
+    { id: 8804, order_no: 'OUT202606120004', source_order_no: 'STO202606120004', source_system: 'SAP', outbound_type: 'TRANSFER', ...central, target_warehouse_code: sh.warehouse_code, target_warehouse_name: sh.warehouse_name, customer_code: '', customer_name: '', ...product, planned_qty: 6, allocated_qty: 0, picked_qty: 0, review_qty: 0, shipped_qty: 0, status: 'CREATED', sap_post_status: 'NOT_POSTED', created_at: '2026-06-12 09:20:00' },
+    { id: 8805, order_no: 'OUT202606120005', source_order_no: 'STO202606120005', source_system: 'SAP', outbound_type: 'TRANSFER', ...central, target_warehouse_code: sh.warehouse_code, target_warehouse_name: sh.warehouse_name, customer_code: '', customer_name: '', ...product, planned_qty: 5, allocated_qty: 5, picked_qty: 5, review_qty: 5, shipped_qty: 5, status: 'CLOSED', logistics_company: 'SF', tracking_no: 'SF202606120005', sap_material_doc_no: '4900000005', sap_post_status: 'SUCCESS', sap_post_result: 'SAP outbound posting success', created_at: '2026-06-10 11:00:00' },
+    { id: 8806, order_no: 'OUT202606120006', source_order_no: 'AS202606120006', source_system: 'CRM', outbound_type: 'AFTERSALE', warehouse_code: 'WH-SZ-AFTERSALE', warehouse_name: '深圳售后仓', customer_code: 'CUST-TESLA-001', customer_name: 'Tesla Energy China', product_code: 'BMS-MAIN-001', product_name: 'BMS 主控板', planned_qty: 2, allocated_qty: 2, picked_qty: 1, review_qty: 0, shipped_qty: 0, status: 'PARTIAL_PICKED', sap_post_status: 'NOT_POSTED', created_at: '2026-06-12 09:40:00' },
+    { id: 8807, order_no: 'OUT202606120007', source_order_no: 'SO202606120007', source_system: 'FULFILLMENT', outbound_type: 'SALES', warehouse_code: sh.warehouse_code, warehouse_name: sh.warehouse_name, customer_code: 'CUST-EU-004', customer_name: 'EU Solar Partner', ...product, planned_qty: 2, allocated_qty: 2, picked_qty: 2, review_qty: 2, shipped_qty: 2, status: 'CLOSED', logistics_company: 'DHL', tracking_no: 'DHL202606120007', sap_material_doc_no: '4900000007', sap_post_status: 'SUCCESS', sap_post_result: 'SAP outbound posting success', created_at: '2026-06-09 10:00:00' },
+    { id: 8808, order_no: 'OUT202606120008', source_order_no: 'SO202606120008', source_system: 'FULFILLMENT', outbound_type: 'SALES', warehouse_code: 'WH-GZ-3PL', warehouse_name: '广州第三方仓', customer_code: 'CUST-AU-005', customer_name: 'AU Energy Storage', ...product, planned_qty: 1, allocated_qty: 1, picked_qty: 1, review_qty: 1, shipped_qty: 1, status: 'CLOSED', logistics_company: 'SF', tracking_no: 'SF202606120008', sap_post_status: 'FAILED', sap_post_result: 'SAP outbound posting failed', created_at: '2026-06-08 10:00:00' }
   ]
   store.outboundOrders.unshift(...orders)
   const outboundLines = orders.flatMap((order) => {
@@ -2402,6 +2531,317 @@ function ensureShippingOrderV3Demo(store: any) {
   saveStore(store)
 }
 
+function ensureOutboundAllocationShipDemo(store: any) {
+  const demoVersion = 'allocation-ship-demo-v2'
+  const demoOrderNos = [
+    'SO-OUT-DEMO-MULTI-001',
+    'SO-OUT-DEMO-DIRECT-PICK-001',
+    'SO-OUT-DEMO-PARTIAL-SHIP-001',
+    'SO-OUT-DEMO-ALLOC-FAIL-001'
+  ]
+  if (store.__wmsOutboundAllocationShipDemo !== demoVersion) {
+    resetShippingOrderDemo(store, demoOrderNos)
+    ;(store.serialNumbers || [])
+      .filter((row: Row) => String(row.sn_code || '').startsWith('SN-DEMO-OUT-'))
+      .forEach((row: Row) => {
+        Object.assign(row, {
+          status: 'ON_SHELF',
+          quality_status: 'QUALIFIED',
+          locked_flag: 0,
+          locked_order_no: '',
+          outbound_order_no: '',
+          sold_flag: 0,
+          market_flag: 0
+        })
+      })
+  }
+  if (store.__wmsOutboundAllocationShipDemo === demoVersion) return
+
+  const warehouse = (store.warehouses || []).find((row: Row) => row.warehouse_code === 'HZ') ||
+    (store.warehouses || []).find((row: Row) => row.warehouse_code === 'WH-HZ-CENTRAL') ||
+    (store.warehouses || [])[0]
+  const ownerCode = '3060'
+  const productByCode = (code: string) => mockProductForOwner(store, code, ownerCode) ||
+    (store.products || []).find((row: Row) => row.product_code === code) ||
+    (store.products || [])[0]
+  const gt3 = productByCode('GT3-10KD1R11004')
+  const hxde = productByCode('HXEDE081R10002')
+  const lhec = productByCode('LHECCHR11002')
+  const ownerName = gt3?.owner_name || hxde?.owner_name || '杭州利沃得'
+
+  const upsertInventory = (product: Row, batchNo: string, qty: number, snManaged = 0) => {
+    let row = (store.inventory || []).find((item: Row) => item.batch_no === batchNo && item.product_code === product.product_code && item.owner_code === ownerCode)
+    if (!row) {
+      row = { id: nextId(store.inventory || []), created_at: now() }
+      store.inventory.unshift(row)
+    }
+    Object.assign(row, {
+      warehouse_code: warehouse.warehouse_code,
+      warehouse_name: warehouse.warehouse_name,
+      area_code: 'AREA-GOOD-01',
+      location_code: 'A01-01-01',
+      owner_code: ownerCode,
+      owner_name: ownerName,
+      product_id: product.id,
+      product_code: product.product_code,
+      product_name: product.product_name,
+      product_description: product.product_name,
+      batch_no: batchNo,
+      inventory_status: 'QUALIFIED',
+      total_qty: qty,
+      available_qty: qty,
+      allocated_qty: 0,
+      frozen_qty: 0,
+      safety_stock: 20,
+      inbound_date: '2026-05-01',
+      sn_managed: snManaged,
+      unit: product.unit || 'PCS'
+    })
+    return row
+  }
+
+  const gt3Inventory = upsertInventory(gt3, 'BATCH-DEMO-OUT-GT3-ALLOC', 80, 1)
+  upsertInventory(hxde, 'BATCH-DEMO-OUT-HXEDE-ALLOC', 120, 0)
+  upsertInventory(lhec, 'BATCH-DEMO-OUT-LHEC-ALLOC', 80, 0)
+
+  Array.from({ length: 80 }, (_, index) => index + 1).forEach((n) => {
+    const sn = `SN-DEMO-OUT-GT3-${String(n).padStart(4, '0')}`
+    let row = (store.serialNumbers || []).find((item: Row) => item.sn_code === sn)
+    if (!row) {
+      row = mockSn(sn, gt3, warehouse, 'A01-01-01', 'ON_SHELF', 'QUALIFIED', 0, '')
+      store.serialNumbers.unshift(row)
+    }
+    Object.assign(row, {
+      ...gt3,
+      warehouse_code: warehouse.warehouse_code,
+      warehouse_name: warehouse.warehouse_name,
+      location_code: 'A01-01-01',
+      batch_no: gt3Inventory.batch_no,
+      status: 'ON_SHELF',
+      quality_status: 'QUALIFIED',
+      locked_flag: 0,
+      locked_order_no: '',
+      outbound_order_no: '',
+      sold_flag: 0,
+      market_flag: 0
+    })
+  })
+
+  const createDemoOrder = (orderNo: string, lines: Row[], relatedOrderNo: string) => {
+    const existing = (store.outboundOrders || []).find((row: Row) => row.order_no === orderNo)
+    if (existing) return existing
+    mockCreateShippingOrderV3(store, {
+      shipmentOrderNo: orderNo,
+      orderType: 'SALES_OUTBOUND',
+      relatedOrderNo,
+      salesOrderNo: relatedOrderNo,
+      warehouseCode: warehouse.warehouse_code,
+      ownerCode,
+      ownerName,
+      consigneeCode: 'CUST-TESLA-001',
+      lines
+    })
+    return (store.outboundOrders || []).find((row: Row) => row.order_no === orderNo)
+  }
+
+  createDemoOrder('SO-OUT-DEMO-MULTI-001', [
+    { lineNo: 10, productCode: gt3.product_code, orderQty: 3, snRequired: true },
+    { lineNo: 20, productCode: hxde.product_code, orderQty: 5, snRequired: false },
+    { lineNo: 30, productCode: lhec.product_code, orderQty: 2, snRequired: false }
+  ], 'SO-DEMO-MULTI-001')
+
+  createDemoOrder('SO-OUT-DEMO-DIRECT-PICK-001', [
+    { lineNo: 10, productCode: gt3.product_code, orderQty: 2, snRequired: true },
+    { lineNo: 20, productCode: hxde.product_code, orderQty: 3, snRequired: false }
+  ], 'SO-DEMO-DIRECT-PICK-001')
+
+  const partial = createDemoOrder('SO-OUT-DEMO-PARTIAL-SHIP-001', [
+    { lineNo: 10, productCode: gt3.product_code, orderQty: 2, snRequired: true },
+    { lineNo: 20, productCode: hxde.product_code, orderQty: 5, snRequired: false }
+  ], 'SO-DEMO-PARTIAL-SHIP-001')
+
+  createDemoOrder('SO-OUT-DEMO-ALLOC-FAIL-001', [
+    { lineNo: 10, productCode: hxde.product_code, orderQty: 99999, snRequired: false }
+  ], 'SO-DEMO-ALLOC-FAIL-001')
+
+  if (partial && Number(partial.shipped_qty || 0) === 0) {
+    mockAutoAllocateV3(store, Number(partial.id))
+    const lines = (store.outboundOrderLines || []).filter((line: Row) => Number(line.order_id) === Number(partial.id))
+    const snLine = lines.find((line: Row) => Number(line.line_no) === 10)
+    const qtyLine = lines.find((line: Row) => Number(line.line_no) === 20)
+    const serials = (store.inventoryAllocations || [])
+      .filter((row: Row) => Number(row.outbound_order_id) === Number(partial.id) && Number(row.outbound_detail_id || row.line_id || 0) === Number(snLine?.id) && row.allocation_status === 'ALLOCATED' && row.sn_code)
+      .map((row: Row) => row.sn_code)
+    if (snLine && serials.length) mockOrderPick(store, Number(partial.id), { lineId: snLine.id, serialNumbers: serials, operator: 'wh_admin' })
+    if (qtyLine) mockOrderPick(store, Number(partial.id), { lineId: qtyLine.id, quantity: 5, operator: 'wh_admin' })
+    if (snLine) {
+      mockShipV3(store, Number(partial.id), { lineId: snLine.id, shipQty: 2, carrierName: 'SF', trackingNo: 'SF-DEMO-PARTIAL-001', operator: 'logistics' })
+      const shipment = (store.shipmentRecords || []).find((row: Row) => row.outbound_order_no === partial.order_no)
+      if (shipment) Object.assign(shipment, { sap_post_status: 'NOT_POSTED', sap_material_doc_no: '', sap_post_result: '' })
+      partial.sap_post_status = 'NOT_POSTED'
+      partial.status = 'PARTIAL_SHIPPED'
+      refreshMockOrderQty(store, Number(partial.id))
+    }
+  }
+
+  store.__wmsOutboundAllocationShipDemo = demoVersion
+  saveStore(store)
+}
+
+function deriveOutboundStatusByQty(planned: number, allocated: number, picked: number, shipped: number) {
+  if (planned > 0 && shipped >= planned) return 'SHIPPED'
+  if (shipped > 0) return 'PARTIAL_SHIPPED'
+  if (planned > 0 && picked >= planned) return 'PICKED'
+  if (picked > 0) return 'PARTIAL_PICKED'
+  if (planned > 0 && allocated >= planned) return 'ALLOCATED'
+  if (allocated > 0) return 'PARTIAL_ALLOCATED'
+  return 'CREATED'
+}
+
+function deriveInboundStatusByQty(planned: number, received: number, shelved: number) {
+  if (planned > 0 && shelved >= planned) return 'ON_SHELF'
+  if (planned > 0 && received >= planned) return 'RECEIVED'
+  if (received > 0) return 'PARTIAL_RECEIVED'
+  return 'CREATED'
+}
+
+function normalizeSapPostStatusValue(value: unknown) {
+  const status = String(value || '').trim().toUpperCase()
+  if (!status) return 'NOT_POSTED'
+  if (status === 'POSTED') return 'SUCCESS'
+  return ['NOT_POSTED', 'SUCCESS', 'FAILED'].includes(status) ? status : status
+}
+
+function addDemoStatusCleanupLog(store: any, module: string, orderNo: string, fromStatus: string, toStatus: string) {
+  if (!orderNo || fromStatus === toStatus) return
+  store.operationLogs ||= []
+  const marker = `${fromStatus}->${toStatus}`
+  const exists = store.operationLogs.some((row: Row) => row.module === module && row.business_doc_no === orderNo && row.action === 'DEMO_STATUS_CLEANUP' && String(row.message || '').includes(marker))
+  if (exists) return
+  store.operationLogs.unshift({
+    id: Date.now() + Math.random(),
+    module,
+    business_doc_no: orderNo,
+    action: 'DEMO_STATUS_CLEANUP',
+    operator: 'system',
+    result: 'SUCCESS',
+    message: `Legacy demo status migrated: ${marker}`,
+    created_at: now()
+  })
+}
+
+function normalizeOutboundLegacyStatus(order: Row) {
+  const previous = String(order.status || '').trim().toUpperCase()
+  const planned = Number(order.planned_qty || 0)
+  const allocated = Number(order.allocated_qty || 0)
+  const picked = Number(order.picked_qty || order.review_qty || 0)
+  const shipped = Number(order.shipped_qty || 0)
+  let nextStatus = previous || 'CREATED'
+  let nextSapStatus = normalizeSapPostStatusValue(order.sap_post_status)
+
+  if (previous === 'CALLBACK_SUCCESS') {
+    nextStatus = planned > 0 && shipped >= planned ? 'CLOSED' : deriveOutboundStatusByQty(planned, allocated, picked, shipped)
+    nextSapStatus = 'SUCCESS'
+  } else if (previous === 'CALLBACK_FAILED') {
+    nextStatus = planned > 0 && shipped >= planned ? 'CLOSED' : deriveOutboundStatusByQty(planned, allocated, picked, shipped)
+    nextSapStatus = 'FAILED'
+  } else if (previous === 'ALLOCATION_EXCEPTION' || previous === 'PENDING_ALLOC' || previous === 'PICKING') {
+    nextStatus = deriveOutboundStatusByQty(planned, allocated, picked, shipped)
+  } else if (previous === 'REVIEWING' || previous === 'REVIEWED') {
+    nextStatus = deriveOutboundStatusByQty(planned, allocated, picked, shipped)
+  }
+
+  const changed = nextStatus !== previous || nextSapStatus !== String(order.sap_post_status || '').trim().toUpperCase()
+  order.status = nextStatus
+  order.sap_post_status = nextSapStatus
+  if (previous === 'CALLBACK_SUCCESS' && !order.sap_post_result) order.sap_post_result = 'Legacy callback status migrated to sap_post_status=SUCCESS'
+  if (previous === 'CALLBACK_FAILED' && !order.sap_post_result) order.sap_post_result = 'Legacy callback status migrated to sap_post_status=FAILED'
+  return { changed, previous, nextStatus }
+}
+
+function normalizeOutboundLegacyLine(line: Row, fallbackStatus: string) {
+  const previous = String(line.line_status || line.status || '').trim().toUpperCase()
+  if (!['CALLBACK_SUCCESS', 'CALLBACK_FAILED', 'ALLOCATION_EXCEPTION', 'PENDING_ALLOC', 'PICKING', 'REVIEWING', 'REVIEWED'].includes(previous)) return false
+  const planned = Number(line.planned_qty || line.order_qty || 0)
+  const nextStatus = fallbackStatus === 'CLOSED' || fallbackStatus === 'CANCELED'
+    ? fallbackStatus
+    : deriveOutboundStatusByQty(planned, Number(line.allocated_qty || 0), Number(line.picked_qty || line.review_qty || 0), Number(line.shipped_qty || 0))
+  line.status = nextStatus
+  line.line_status = nextStatus
+  return nextStatus !== previous
+}
+
+function normalizeInboundLegacyStatus(order: Row) {
+  const previous = String(order.status || '').trim().toUpperCase()
+  const planned = Number(order.planned_qty || 0)
+  const received = Number(order.received_qty || 0)
+  const shelved = Number(order.shelved_qty || 0)
+  let nextStatus = previous || 'CREATED'
+  let nextSapStatus = normalizeSapPostStatusValue(order.sap_post_status)
+
+  if (previous === 'SAP_FAILED') {
+    nextStatus = deriveInboundStatusByQty(planned, received, shelved)
+    nextSapStatus = 'FAILED'
+  } else if (previous === 'RECEIVING') {
+    nextStatus = deriveInboundStatusByQty(planned, received, shelved)
+  } else if (previous === 'BOUND' && (received > 0 || shelved > 0)) {
+    nextStatus = deriveInboundStatusByQty(planned, received, shelved)
+  }
+
+  const changed = nextStatus !== previous || nextSapStatus !== String(order.sap_post_status || '').trim().toUpperCase()
+  order.status = nextStatus
+  order.sap_post_status = nextSapStatus
+  if (previous === 'SAP_FAILED' && !order.sap_post_result) order.sap_post_result = 'Legacy SAP_FAILED status migrated to sap_post_status=FAILED'
+  return { changed, previous, nextStatus }
+}
+
+function normalizeInboundLegacyLine(line: Row, fallbackStatus: string) {
+  const previous = String(line.status || '').trim().toUpperCase()
+  if (!['SAP_FAILED', 'RECEIVING', 'BOUND'].includes(previous)) return false
+  const nextStatus = previous === 'BOUND' && Number(line.received_qty || 0) <= 0 && Number(line.shelved_qty || 0) <= 0
+    ? fallbackStatus
+    : deriveInboundStatusByQty(Number(line.planned_qty || 0), Number(line.received_qty || 0), Number(line.shelved_qty || 0))
+  line.status = nextStatus
+  return nextStatus !== previous
+}
+
+function normalizeDemoOrderStatuses(store: any) {
+  ;(store.outboundOrders || []).forEach((order: Row) => {
+    const result = normalizeOutboundLegacyStatus(order)
+    const lines = (store.outboundOrderLines || []).filter((line: Row) => Number(line.order_id) === Number(order.id))
+    let lineChanged = false
+    lines.forEach((line: Row) => {
+      lineChanged = normalizeOutboundLegacyLine(line, order.status) || lineChanged
+    })
+    if (result.changed || lineChanged) addDemoStatusCleanupLog(store, 'OUTBOUND', order.order_no, result.previous, order.status)
+  })
+  ;(store.inboundOrders || []).forEach((order: Row) => {
+    const result = normalizeInboundLegacyStatus(order)
+    const lines = (store.inboundOrderLines || []).filter((line: Row) => Number(line.order_id) === Number(order.id))
+    let lineChanged = false
+    lines.forEach((line: Row) => {
+      lineChanged = normalizeInboundLegacyLine(line, order.status) || lineChanged
+    })
+    if (result.changed || lineChanged) addDemoStatusCleanupLog(store, 'INBOUND', order.order_no, result.previous, order.status)
+  })
+}
+
+function normalizeOutboundAllocationStatuses(store: any) {
+  ;(store.outboundOrders || []).forEach((order: Row) => {
+    const lines = (store.outboundOrderLines || []).filter((line: Row) => Number(line.order_id) === Number(order.id))
+    const needsNormalize = order.status === 'ALLOCATION_EXCEPTION' || lines.some((line: Row) => ['ALLOCATION_EXCEPTION', 'PENDING_ALLOC'].includes(line.status) || ['ALLOCATION_EXCEPTION', 'PENDING_ALLOC'].includes(line.line_status))
+    if (!needsNormalize) return
+    refreshMockOrderQty(store, Number(order.id))
+    lines.forEach((line: Row) => {
+      const planned = Number(line.planned_qty || line.order_qty || 0)
+      const status = deriveOutboundStatusByQty(planned, Number(line.allocated_qty || 0), Number(line.picked_qty || 0), Number(line.shipped_qty || 0))
+      line.status = status
+      line.line_status = status
+    })
+    order.status = deriveOutboundStatusByQty(Number(order.planned_qty || 0), Number(order.allocated_qty || 0), Number(order.picked_qty || 0), Number(order.shipped_qty || 0))
+  })
+}
+
 function ensureAvailableShippingSerials(store: any, product: Row, warehouse: Row, count: number) {
   const available = () => (store.serialNumbers || []).filter((row: Row) =>
     row.warehouse_code === warehouse.warehouse_code &&
@@ -2498,6 +2938,7 @@ function shipmentRow(shipmentNo: string, order: Row, qty: number, carrier: strin
 function handleOutboundMock<T>(store: any, url: string, method: string, params: Row, body: Row): { handled: true; value: T } | { handled: false; value?: never } {
   if (url === '/outbound-orders' && method === 'get') return handled(pageOutboundOrders({ ...store, outboundOrders: filterRowsByWarehouseScope(store.outboundOrders || [], params) }, params) as T)
   if (url === '/outbound-orders' && method === 'post') return handled(mockCreateShippingOrderV3(store, body) as T)
+  if (url === '/outbound-orders/retry-sap' && method === 'post') return handled(mockRetryOutboundSap(store, (body.orderIds || []) as number[]) as T)
   if (url.startsWith('/outbound-orders/')) {
     const segments = url.split('/')
     const id = Number(segments[2])
@@ -2505,6 +2946,7 @@ function handleOutboundMock<T>(store: any, url: string, method: string, params: 
     const order = (store.outboundOrders || []).find((row: Row) => Number(row.id) === Number(id))
     requireWarehouseAllowed(order, method === 'get' ? params : body)
     if (method === 'get' && !action) return handled(mockOutboundDetail(store, id) as T)
+    if (method === 'put' && !action) return handled(mockUpdateShippingOrderV3(store, id, body) as T)
     if (method === 'get' && action === 'allocations') return handled(mockAllocationView(store, id) as T)
     if (method === 'get' && action === 'allocation-candidates') return handled({ items: mockAllocationView(store, id).availableInventory, recommended: mockAllocationView(store, id).recommendedInventory } as T)
     if (method === 'get' && action === 'interface-logs') return handled({ items: store.interfaceLogs.filter((row: Row) => row.business_doc_no === mockOutboundOrder(store, id).order_no) } as T)
@@ -2523,7 +2965,7 @@ function handleOutboundMock<T>(store: any, url: string, method: string, params: 
     if (method === 'post' && action === 'picking-tasks') return handled(mockGeneratePicking(store, id) as T)
     if (method === 'post' && ['pick', 'pick-scan'].includes(action)) return handled(mockOrderPick(store, id, body) as T)
     if (method === 'post' && action === 'ship') return handled(mockShipV3(store, id, body) as T)
-    if (method === 'post' && action === 'post-sap') return handled(mockSapCallback(store, id, Boolean(body.forceSapFail)) as T)
+    if (method === 'post' && action === 'post-sap') return handled(mockPostOutboundSap(store, id, body) as T)
     if (method === 'post' && action === 'cancel') return handled(mockCancelOrder(store, id, body) as T)
     if (method === 'post' && action === 'close') return handled(mockCloseOrder(store, id, body) as T)
   }
@@ -2755,6 +3197,9 @@ function handleImportExportMock<T>(store: any, url: string, method: string, para
   if (url === '/inbound-orders/import-template' && method === 'get') return handled(csvFile('预期到货通知单导入模板.csv', inboundTemplateCsv()) as T)
   if (url === '/inbound-orders/import' && method === 'post') return handled(importInboundOrdersMock(store, (body.headers || []) as Row[], (body.lines || []) as Row[]) as T)
   if (url === '/inbound-orders/export' && method === 'post') return handled(csvFile(`预期到货通知单_${mockTimestamp()}.csv`, inboundExportCsv(store, body)) as T)
+
+  if (url === '/outbound-orders/import-template' && method === 'get') return handled(csvFile('发运订单导入模板.csv', outboundTemplateCsv()) as T)
+  if (url === '/outbound-orders/import' && method === 'post') return handled(importOutboundOrdersMock(store, (body.headers || []) as Row[], (body.lines || []) as Row[]) as T)
 
   if (url === '/inbound/sn-bindings/export' && method === 'get') return handled(csvFile(`SN绑定数据_${mockTimestamp()}.csv`, snBindingExportCsv(store, params)) as T)
   return { handled: false }
@@ -3190,6 +3635,16 @@ function inboundTemplateCsv() {
   ].join('\n')
 }
 
+function outboundTemplateCsv() {
+  return [
+    '# Sheet1：发运订单表头',
+    csvString(outboundHeaderHeaders(), [['TMP-OUT-001', '销售出库', 'HZ', '杭州仓', '3060', '杭州利沃得', 'CUST-TESLA-001', 'Tesla Energy China', '2026-07-03 10:00:00', 'SO-DEMO-IMPORT-001', 'SO-DEMO-IMPORT-001', '', '', '', '2026-07-04 18:00:00', 'SF', 'SF-DEMO-IMPORT-001', '导入模板示例']]),
+    '',
+    '# Sheet2：发运订单明细',
+    csvString(outboundLineHeaders(), [['TMP-OUT-001', '10', 'GT3-10KD1R11004', '三相并网逆变器', '3', '3060', 'PCS'], ['TMP-OUT-001', '20', 'HXEDE081R10002', '电能诊断终端', '5', '3060', 'PCS']])
+  ].join('\n')
+}
+
 function importProductsMock(store: any, rows: Row[]) {
   const result = importResult()
   rows.forEach((row, index) => {
@@ -3372,6 +3827,91 @@ function importInboundOrdersMock(store: any, headers: Row[], lines: Row[]) {
   return result
 }
 
+function importOutboundOrdersMock(store: any, headers: Row[], lines: Row[]) {
+  const result = importResult()
+  const lineGroups = new Map<string, Row[]>()
+  lines.forEach((line) => {
+    const key = cell(line, '发运订单编号', 'shipmentOrderNo', 'orderNo', 'outboundOrderNo')
+    if (!key && headers.length !== 1) return
+    const groupKey = key || '__ONLY_HEADER__'
+    lineGroups.set(groupKey, [...(lineGroups.get(groupKey) || []), line])
+  })
+  headers.forEach((header, index) => {
+    const rowNo = index + 2
+    const orderNo = cell(header, '发运订单编号', 'shipmentOrderNo', 'orderNo', 'outboundOrderNo') || `SO-OUT-IMP-${Date.now()}-${index + 1}`
+    const groupKey = cell(header, '发运订单编号', 'shipmentOrderNo', 'orderNo', 'outboundOrderNo') || (headers.length === 1 ? '__ONLY_HEADER__' : orderNo)
+    const orderType = parseOutboundType(cell(header, '订单类型', 'orderType'))
+    const warehouseCode = normalizeWarehouseCode(cell(header, '仓库编号', 'warehouseCode') || 'HZ')
+    const ownerCode = cell(header, '货主', '货主编码', 'ownerCode') || '3060'
+    const ownerName = cell(header, '货主名称', 'ownerName')
+    const orderLines = lineGroups.get(groupKey) || []
+    const requiredError = firstMissing([
+      [orderType, '订单类型不能为空或不合法'],
+      [warehouseCode, '仓库编号不能为空'],
+      [ownerCode, '货主不能为空']
+    ])
+    if (requiredError) return pushImportError(result, rowNo, requiredError)
+    if (!(store.customers || []).some((item: Row) => item.customer_code === ownerCode)) return pushImportError(result, rowNo, '货主不存在')
+    if (!(store.warehouses || []).some((item: Row) => item.warehouse_code === warehouseCode)) return pushImportError(result, rowNo, '仓库不存在')
+    if (!orderLines.length) return pushImportError(result, rowNo, '每个发运订单至少需要一条明细')
+    const usedLineNos = new Set<string>()
+    const mappedLines: Row[] = []
+    let failed = false
+    orderLines.forEach((line, lineIndex) => {
+      const lineNo = cell(line, '行号', 'lineNo')
+      const productCode = cell(line, '产品编码', 'productCode')
+      const orderQty = Number(cell(line, '订单数量', 'orderQty', 'plannedQty'))
+      const product = mockProductForOwner(store, productCode, ownerCode)
+      const lineRowNo = lineIndex + 2
+      if (!lineNo || usedLineNos.has(lineNo)) {
+        failed = true
+        return pushImportError(result, lineRowNo, `发运订单 ${orderNo} 行号为空或重复`)
+      }
+      if (!product) {
+        failed = true
+        return pushImportError(result, lineRowNo, `产品不存在或不属于货主：${ownerCode}/${productCode}`)
+      }
+      if (!Number.isFinite(orderQty) || orderQty <= 0) {
+        failed = true
+        return pushImportError(result, lineRowNo, '订单数量必须大于 0')
+      }
+      usedLineNos.add(lineNo)
+      mappedLines.push({
+        lineNo: Number(lineNo),
+        productCode,
+        orderQty,
+        sapPlant: cell(line, 'SAP 工厂', 'sapPlant') || ownerCode,
+        unit: cell(line, '单位', 'unit') || product.unit || 'PCS',
+        snRequired: Number(product.sn_managed || 0) === 1
+      })
+    })
+    if (failed) return
+    mockCreateShippingOrderV3(store, {
+      shipmentOrderNo: orderNo,
+      orderType,
+      warehouseCode,
+      ownerCode,
+      ownerName,
+      consigneeCode: cell(header, '收货人编码', 'consigneeCode'),
+      relatedOrderNo: cell(header, '关联单号', 'relatedOrderNo'),
+      salesOrderNo: cell(header, '销售单号', 'salesOrderNo'),
+      targetWarehouseCode: cell(header, '目标仓库', 'targetWarehouseCode'),
+      expectedShipTime: cell(header, '预期发货时间', 'expectedShipTime'),
+      requiredDeliveryTime: cell(header, '要求交货时间', 'requiredDeliveryTime'),
+      carrierName: cell(header, '物流商', 'carrierName'),
+      trackingNo: cell(header, '物流单号', 'trackingNo'),
+      remark: cell(header, '备注', 'remark'),
+      lines: mappedLines,
+      operator: 'import'
+    })
+    addOutboundOperationLog(store, orderNo, 'IMPORT_SHIPPING_ORDER', 'import', 'SUCCESS', `模板导入发运订单 ${mappedLines.length} 行`)
+    result.successCount += 1
+  })
+  result.failedCount = result.errors.length
+  saveStore(store)
+  return result
+}
+
 function productExportRow(row: Row) {
   return [
     row.owner_code || '', row.owner_name || '', row.product_code || '', row.product_name || '',
@@ -3451,6 +3991,14 @@ function inboundLineHeaders() {
   return ['入库单号', '行号', '产品编码', '产品名称', 'SAP 工厂', 'SAP 库存地点', '批次号', '计划数量', '质量状态', '备注']
 }
 
+function outboundHeaderHeaders() {
+  return ['发运订单编号', '订单类型', '仓库编号', '仓库名称', '货主', '货主名称', '收货人编码', '收货人名称', '预期发货时间', '关联单号', '销售单号', '返工单号', '目标仓库', '目标货主', '要求交货时间', '物流商', '物流单号', '备注']
+}
+
+function outboundLineHeaders() {
+  return ['发运订单编号', '行号', '产品编码', '产品描述', '订单数量', 'SAP 工厂', '单位']
+}
+
 function inboundExportHeaderHeaders() {
   return ['入库单号', '入库类型', '来源系统', '来源单号', '货主编码', '货主名称', '入库仓库编码', '入库仓库名称', '出库国家', 'SAP 工厂', '产品行数', '计划总数量', '已采集数量', '待收货数量', '已收货数量', '已上架数量', '订单状态', 'SAP 回传状态', '回传结果', '创建时间']
 }
@@ -3470,7 +4018,7 @@ function csvEscape(value: unknown) {
 
 function filterRows(rows: Row[], params: Row) {
   return rows.filter((row) => Object.keys(params || {}).every((key) => {
-    if (['pageNum', 'pageSize'].includes(key) || params[key] === '' || params[key] == null) return true
+    if (isInternalQueryParam(key) || params[key] === '' || params[key] == null) return true
     if (key === 'createdStart') return String(row.created_at || '') >= String(params[key])
     if (key === 'createdEnd') return String(row.created_at || '').slice(0, 10) <= String(params[key])
     const value = String(row[key] ?? row[toSnake(key)] ?? '')
@@ -3520,7 +4068,7 @@ function parseStatus(value: string) {
 }
 
 function statusName(value: string) {
-  const map: Row = { ACTIVE: '启用', DISABLED: '停用', CREATED: '待收货', PARTIAL_RECEIVED: '部分收货', RECEIVED: '完全收货', ON_SHELF: '已上架', CLOSED: '已关闭', CANCELED: '已取消' }
+  const map: Row = { ACTIVE: '启用', DISABLED: '停用', CREATED: '创建', PARTIAL_RECEIVED: '部分收货', RECEIVING: '收货中', RECEIVED: '完全收货', ON_SHELF: '已上架', CLOSED: '订单关闭', CANCELED: '订单取消', SAP_FAILED: 'SAP 回传失败' }
   return map[value] || value || ''
 }
 
@@ -3537,6 +4085,25 @@ function customerTypeName(value: string) {
 function parseInboundType(value: string) {
   const map: Row = { 生产入库: 'PRODUCTION', 备货入库: 'STOCKING', '售后 RMA 入库': 'RMA', 调拨入库: 'TRANSFER', '供应商 VMI 入库': 'SUPPLIER_VMI', PRODUCTION: 'PRODUCTION', STOCKING: 'STOCKING', RMA: 'RMA', TRANSFER: 'TRANSFER', SUPPLIER_VMI: 'SUPPLIER_VMI' }
   return map[String(value || '').trim().toUpperCase()] || map[String(value || '').trim()] || ''
+}
+
+function parseOutboundType(value: string) {
+  const raw = String(value || '').trim()
+  if (!raw) return ''
+  const map: Row = {
+    销售出库: 'SALES_OUTBOUND',
+    售后出库: 'AFTERSALE_OUTBOUND',
+    仓库调拨: 'WAREHOUSE_TRANSFER',
+    'STO 出库': 'STO_OUTBOUND',
+    工单领料出库: 'WORK_ORDER_ISSUE',
+    领料单出库: 'MATERIAL_REQUISITION',
+    返工出库: 'REWORK_OUTBOUND',
+    退货出库: 'RETURN_OUTBOUND',
+    其他出库: 'OTHER_OUTBOUND',
+    SALES: 'SALES_OUTBOUND',
+    TRANSFER: 'WAREHOUSE_TRANSFER'
+  }
+  return map[raw.toUpperCase()] || map[raw] || normalizeMockOutboundType(raw)
 }
 
 function inboundTypeName(value: string) {
@@ -3564,7 +4131,7 @@ function mockTimestamp() {
 
 function pageRows(rows: Row[], params: Row) {
   const filtered = rows.filter((row) => Object.keys(params).every((key) => {
-    if (['pageNum', 'pageSize'].includes(key) || params[key] === '' || params[key] == null) return true
+    if (isInternalQueryParam(key) || params[key] === '' || params[key] == null) return true
     if (key === 'createdStart') return String(row.created_at || '') >= String(params[key])
     if (key === 'createdEnd') return String(row.created_at || '').slice(0, 10) <= String(params[key])
     const value = String(row[key] ?? row[toSnake(key)] ?? '')
@@ -4061,6 +4628,14 @@ function mockRowOwnerName(store: any, row: Row) {
   return row.owner_name || row.ownerName || store.products.find((product: Row) => product.product_code === row.product_code || Number(product.id) === Number(row.product_id))?.owner_name || ''
 }
 
+function mockProductForOwner(store: any, productCode: string, ownerCode?: string) {
+  const code = String(productCode || '')
+  const owner = String(ownerCode || '')
+  return (store.products || []).find((row: Row) => row.product_code === code && String(row.owner_code || '') === owner) ||
+    (store.products || []).find((row: Row) => row.product_code === code && !row.owner_code) ||
+    (store.products || []).find((row: Row) => row.product_code === code)
+}
+
 function mockSameOwner(store: any, order: Row, row: Row) {
   const orderOwner = String(order.owner_code || order.ownerCode || '')
   const rowOwner = String(mockRowOwner(store, row) || '')
@@ -4127,7 +4702,8 @@ function mockCreateOutbound(store: any, body: Row, type: string) {
     picked_qty: 0,
     review_qty: 0,
     shipped_qty: 0,
-    status: 'PENDING_ALLOC',
+    status: 'CREATED',
+    sap_post_status: 'NOT_POSTED',
     created_at: now()
   }
   store.outboundOrders.unshift(row)
@@ -4140,7 +4716,7 @@ function mockCreateOutbound(store: any, body: Row, type: string) {
 }
 
 function mockCreateShippingOrderV3(store: any, body: Row) {
-  const id = Date.now()
+  const id = nextId(store.outboundOrders)
   const orderType = normalizeMockOutboundType(String(body.orderType || body.outboundType || 'SALES_OUTBOUND'))
   const orderNo = body.shipmentOrderNo || body.outboundOrderNo || body.orderNo || `${mockOutboundPrefix(orderType)}${id}`
   const warehouse = store.warehouses.find((item: Row) => item.warehouse_code === normalizeWarehouseCode(body.warehouseCode || 'HZ')) || store.warehouses[0]
@@ -4172,6 +4748,9 @@ function mockCreateShippingOrderV3(store: any, body: Row) {
     customer_name: transferType ? '' : customer.customer_name,
     expected_ship_time: toMockDateTime(body.expectedShipTime),
     required_delivery_time: toMockDateTime(body.requiredDeliveryTime),
+    carrier_name: body.carrierName || body.logisticsCompany || '',
+    logistics_company: body.carrierName || body.logisticsCompany || '',
+    tracking_no: body.trackingNo || body.tracking_no || '',
     planned_qty: inputLines.reduce((sumQty: number, line: Row) => sumQty + Number(line.orderQty || line.plannedQty || 0), 0),
     allocated_qty: 0,
     picked_qty: 0,
@@ -4180,11 +4759,12 @@ function mockCreateShippingOrderV3(store: any, body: Row) {
     status: 'CREATED',
     sap_post_status: 'NOT_POSTED',
     sap_post_result: '',
+    remark: body.remark || '',
     created_at: now()
   }
   store.outboundOrders.unshift(order)
   inputLines.forEach((item: Row, index: number) => {
-    const product = store.products.find((row: Row) => row.product_code === item.productCode) || store.products[0]
+    const product = mockProductForOwner(store, item.productCode, order.owner_code) || store.products[0]
     const line = outboundLine(order, Number(item.lineNo || (index + 1) * 10), product, Number(item.orderQty || item.plannedQty || 1), 0, 0, 0, 0)
     line.sap_plant = item.sapPlant || order.owner_code
     line.unit = item.unit || product.unit || 'PCS'
@@ -4194,6 +4774,78 @@ function mockCreateShippingOrderV3(store: any, body: Row) {
   })
   addInterfaceLog(store, transferType ? 'SAP_STO_PUSH' : 'FULFILLMENT_ORDER_PUSH', order.source_system, 'WMS', order.order_no, transferType ? '/api/mock/sap/sto-orders' : '/api/mock/fulfillment/outbound-orders', 'SUCCESS', '')
   addOutboundOperationLog(store, order.order_no, 'CREATE_SHIPPING_ORDER', 'system', 'SUCCESS', '创建发运订单')
+  saveStore(store)
+  return mockOutboundDetail(store, id)
+}
+
+function assertMockShippingOrderEditable(store: any, order: Row, operator = 'planner') {
+  if (!canEditOutboundOrder(order)) {
+    failOutboundAction(store, order, 'EDIT_SHIPPING_ORDER', operator, `当前状态【${currentStatusText(order)}】不允许编辑发运订单，仅创建状态且未产生分配、拣货、发货记录时允许编辑`)
+  }
+  const hasAllocation = (store.inventoryAllocations || []).some((row: Row) => Number(row.outbound_order_id) === Number(order.id) && row.allocation_status !== 'CANCELED')
+  if (hasAllocation) failOutboundAction(store, order, 'EDIT_SHIPPING_ORDER', operator, '已经存在分配记录的发运订单不允许编辑')
+  const hasPick = (store.pickingRecords || []).some((row: Row) => Number(row.outbound_order_id) === Number(order.id) && !['CANCELED'].includes(row.result || row.status || ''))
+  if (hasPick) failOutboundAction(store, order, 'EDIT_SHIPPING_ORDER', operator, '已经存在拣货记录的发运订单不允许编辑')
+  const hasShipment = (store.shipmentRecords || []).some((row: Row) => Number(row.outbound_order_id) === Number(order.id) && !['CANCELED'].includes(row.shipment_status || row.status || ''))
+  if (hasShipment) failOutboundAction(store, order, 'EDIT_SHIPPING_ORDER', operator, '已经存在发货记录的发运订单不允许编辑')
+}
+
+function mockUpdateShippingOrderV3(store: any, id: number, body: Row) {
+  const order = mockOutboundOrder(store, id)
+  assertMockShippingOrderEditable(store, order, body.operator || 'planner')
+  const orderType = normalizeMockOutboundType(String(body.orderType || body.outboundType || order.order_type || 'SALES_OUTBOUND'))
+  const warehouse = store.warehouses.find((item: Row) => item.warehouse_code === normalizeWarehouseCode(body.warehouseCode || order.warehouse_code)) || store.warehouses[0]
+  const target = store.warehouses.find((item: Row) => item.warehouse_code === normalizeWarehouseCode(body.targetWarehouseCode || order.target_warehouse_code || 'NB')) || store.warehouses[1]
+  const customer = store.customers.find((item: Row) => item.customer_code === body.consigneeCode || item.customer_code === body.customerCode) || store.customers[0]
+  const ownerCode = body.ownerCode || order.owner_code || '3060'
+  const inputLines = Array.isArray(body.lines) ? body.lines : []
+  if (!inputLines.length) throw new Error('发运订单至少需要一条明细')
+  const usedLineNos = new Set<number>()
+  inputLines.forEach((line: Row) => {
+    const lineNo = Number(line.lineNo || line.line_no || 0)
+    if (!lineNo || usedLineNos.has(lineNo)) throw new Error('发运订单行号不能为空且不能重复')
+    usedLineNos.add(lineNo)
+    if (Number(line.orderQty || line.plannedQty || 0) <= 0) throw new Error('行订单数量必须大于 0')
+    if (!mockProductForOwner(store, line.productCode || line.product_code, ownerCode)) throw new Error(`产品不存在或不属于货主：${ownerCode}/${line.productCode || line.product_code}`)
+  })
+  const transferType = ['WAREHOUSE_TRANSFER', 'STO_OUTBOUND'].includes(orderType)
+  Object.assign(order, {
+    source_order_no: body.relatedOrderNo || body.sourceOrderNo || order.source_order_no,
+    related_order_no: body.relatedOrderNo || body.sourceOrderNo || order.related_order_no,
+    sales_order_no: body.salesOrderNo || '',
+    outbound_type: orderType,
+    order_type: orderType,
+    warehouse_code: warehouse.warehouse_code,
+    warehouse_name: warehouse.warehouse_name,
+    owner_code: ownerCode,
+    owner_name: body.ownerName || order.owner_name,
+    target_warehouse_code: transferType ? target.warehouse_code : '',
+    target_warehouse_name: transferType ? target.warehouse_name : '',
+    consignee_code: transferType ? '' : customer.customer_code,
+    consignee_name: transferType ? '' : customer.customer_name,
+    customer_code: transferType ? '' : customer.customer_code,
+    customer_name: transferType ? '' : customer.customer_name,
+    expected_ship_time: toMockDateTime(body.expectedShipTime),
+    required_delivery_time: toMockDateTime(body.requiredDeliveryTime),
+    carrier_name: body.carrierName || '',
+    logistics_company: body.carrierName || '',
+    tracking_no: body.trackingNo || '',
+    remark: body.remark || '',
+    updated_at: now()
+  })
+  store.outboundOrderLines = (store.outboundOrderLines || []).filter((line: Row) => Number(line.order_id) !== Number(id))
+  inputLines.forEach((item: Row, index: number) => {
+    const product = mockProductForOwner(store, item.productCode || item.product_code, order.owner_code) || store.products[0]
+    const line = outboundLine(order, Number(item.lineNo || item.line_no || (index + 1) * 10), product, Number(item.orderQty || item.plannedQty || 1), 0, 0, 0, 0)
+    line.sap_plant = item.sapPlant || item.sap_plant || order.owner_code
+    line.unit = item.unit || product.unit || 'PCS'
+    line.sn_required = item.snRequired == null ? Number(product.sn_managed || 0) : (item.snRequired ? 1 : 0)
+    line.line_status = 'CREATED'
+    store.outboundOrderLines.unshift(line)
+  })
+  refreshMockOrderQty(store, id)
+  order.status = 'CREATED'
+  addOutboundOperationLog(store, order.order_no, 'EDIT_SHIPPING_ORDER', body.operator || 'planner', 'SUCCESS', '编辑发运订单')
   saveStore(store)
   return mockOutboundDetail(store, id)
 }
@@ -4217,12 +4869,134 @@ function toMockDateTime(value: unknown) {
   return String(value)
 }
 
+function mockAutoAllocateLegacyTransactional(store: any, id: number) {
+  const order = mockOutboundOrder(store, id)
+  if (!canAllocateOutboundOrder(order)) {
+    failOutboundAction(store, order, 'ALLOCATE_AUTO', 'wh_admin', `当前状态【${currentStatusText(order)}】不允许分配库存，仅创建或部分分配状态允许分配`)
+  }
+  const need = Math.max(Number(order.planned_qty || 0) - Number(order.allocated_qty || 0), 0)
+  if (need <= 0) return mockOutboundDetail(store, id)
+  const candidates = mockAllocationView(store, id).recommendedInventory.slice(0, need)
+  if (candidates.length < need) {
+    const message = `自动分配失败：库存不足，需要 ${need} 个 SN，当前可分配 ${candidates.length} 个`
+    store.outboundExceptions.unshift({ id: Date.now(), exception_no: `EXC${Date.now()}`, outbound_order_no: order.order_no, exception_type: 'INSUFFICIENT_STOCK', message, status: 'OPEN', created_at: now() })
+    addOutboundOperationLog(store, order.order_no, 'ALLOCATE_AUTO', 'wh_admin', 'FAILED', message)
+    saveStore(store)
+    throw new Error(message)
+  }
+  allocateSerials(store, order, candidates.map((row: Row) => row.sn_code), 'AUTO')
+  saveStore(store)
+  return mockOutboundDetail(store, id)
+}
+
+function mockAutoAllocateV3Transactional(store: any, id: number) {
+  const order = mockOutboundOrder(store, id)
+  refreshMockOrderQty(store, id)
+  if (!canAllocateOutboundOrder(order)) {
+    failOutboundAction(store, order, 'ALLOCATE_AUTO', 'wh_admin', `当前状态【${currentStatusText(order)}】不允许分配库存，仅创建或部分分配状态允许分配`)
+  }
+  const lines = (store.outboundOrderLines || []).filter((line: Row) => Number(line.order_id) === Number(id))
+  if (!lines.length) throw new Error('自动分配失败：发运订单明细不存在')
+
+  const inventoryRemaining = new Map<Row, number>()
+  const plannedAllocations: Row[] = []
+  const shortages: string[] = []
+  const usedSerials = new Set<string>()
+  const availableQty = (inv: Row) => {
+    if (!inventoryRemaining.has(inv)) inventoryRemaining.set(inv, Number(inv.available_qty || 0))
+    return Number(inventoryRemaining.get(inv) || 0)
+  }
+  const reserveQty = (inv: Row, qty: number) => inventoryRemaining.set(inv, Math.max(availableQty(inv) - qty, 0))
+
+  lines.forEach((line: Row) => {
+    const plannedQty = Number(line.planned_qty || line.order_qty || 0)
+    let remain = Math.max(plannedQty - Number(line.allocated_qty || 0), 0)
+    if (remain <= 0) return
+    const snRequired = Number(line.sn_required ?? line.sn_managed ?? 1) === 1
+    if (!snRequired) {
+      const inventoryRows = (store.inventory || [])
+        .filter((row: Row) => row.warehouse_code === order.warehouse_code && row.product_code === line.product_code && mockSameOwner(store, order, row) && mockAvailableInventoryRow(row))
+        .sort((a: Row, b: Row) => String(a.inbound_date || '').localeCompare(String(b.inbound_date || '')) || Number(a.id || 0) - Number(b.id || 0))
+      inventoryRows.forEach((inv: Row) => {
+        if (remain <= 0) return
+        const qty = Math.min(remain, availableQty(inv))
+        if (qty <= 0) return
+        plannedAllocations.push({ line, inv, qty, snRow: null })
+        reserveQty(inv, qty)
+        remain -= qty
+      })
+    } else {
+      const serialRows = (store.serialNumbers || [])
+        .filter((row: Row) => row.warehouse_code === order.warehouse_code && row.product_code === line.product_code && mockSameOwner(store, order, row) && row.status === 'ON_SHELF' && row.quality_status === 'QUALIFIED' && !row.locked_flag && row.location_code !== 'A02-01-07')
+      serialRows.forEach((snRow: Row) => {
+        if (remain <= 0 || usedSerials.has(snRow.sn_code)) return
+        const inv = mockInventoryForLine(store, order, line, snRow)
+        if (!inv || !mockAvailableInventoryRow(inv) || availableQty(inv) <= 0) return
+        plannedAllocations.push({ line, inv, qty: 1, snRow })
+        usedSerials.add(snRow.sn_code)
+        reserveQty(inv, 1)
+        remain -= 1
+      })
+    }
+    if (remain > 0) shortages.push(`行 ${line.line_no} ${line.product_code} 缺口 ${remain}`)
+  })
+
+  if (shortages.length) {
+    const message = `自动分配失败：${shortages.join('；')}`
+    store.outboundExceptions.unshift({ id: Date.now(), exception_no: `EXC${Date.now()}`, outbound_order_no: order.order_no, exception_type: 'INSUFFICIENT_STOCK', message, status: 'OPEN', created_at: now() })
+    addOutboundOperationLog(store, order.order_no, 'ALLOCATE_AUTO', 'wh_admin', 'FAILED', message)
+    saveStore(store)
+    throw new Error(message)
+  }
+
+  let allocated = 0
+  plannedAllocations.forEach((plan: Row) => {
+    const line = plan.line
+    const inv = plan.inv
+    const qty = Number(plan.qty || 0)
+    inv.available_qty = Math.max(Number(inv.available_qty || 0) - qty, 0)
+    inv.allocated_qty = Number(inv.allocated_qty || 0) + qty
+    if (plan.snRow) {
+      Object.assign(plan.snRow, { status: 'ALLOCATED', locked_flag: 1, locked_order_no: order.order_no, outbound_order_no: order.order_no })
+    }
+    store.inventoryAllocations.unshift({
+      id: Date.now() + Math.random(),
+      allocation_no: `ALLOC-${Date.now()}-${line.line_no}-${plan.snRow?.sn_code || inv.id}`,
+      outbound_order_id: id,
+      outbound_order_no: order.order_no,
+      outbound_detail_id: line.id,
+      line_id: line.id,
+      inventory_id: inv.id || 9001,
+      warehouse_code: order.warehouse_code,
+      location_code: plan.snRow?.location_code || inv.location_code || 'A01-01-01',
+      owner_code: order.owner_code,
+      owner_name: order.owner_name,
+      product_id: line.product_id,
+      product_code: line.product_code,
+      product_name: line.product_name,
+      batch_no: inv.batch_no || line.batch_no,
+      sn_code: plan.snRow?.sn_code || '',
+      allocated_qty: qty,
+      allocation_mode: 'AUTO_FIFO',
+      allocation_status: 'ALLOCATED',
+      created_at: now()
+    })
+    allocated += qty
+  })
+  refreshMockOrderQty(store, id)
+  order.status = Number(order.allocated_qty || 0) >= Number(order.planned_qty || 0) ? 'ALLOCATED' : 'PARTIAL_ALLOCATED'
+  addOutboundOperationLog(store, order.order_no, 'ALLOCATE_AUTO', 'wh_admin', 'SUCCESS', `自动分配 ${allocated}`)
+  saveStore(store)
+  return mockOutboundDetail(store, id)
+}
+
 function mockAutoAllocate(store: any, id: number) {
+  return mockAutoAllocateLegacyTransactional(store, id)
   const order = mockOutboundOrder(store, id)
   const need = Number(order.planned_qty || 0) - Number(order.allocated_qty || 0)
   const candidates = mockAllocationView(store, id).recommendedInventory.slice(0, need)
   if (candidates.length < need) {
-    order.status = 'ALLOCATION_EXCEPTION'
+    order.status = deriveOutboundStatusByQty(Number(order.planned_qty || 0), Number(order.allocated_qty || 0), Number(order.picked_qty || 0), Number(order.shipped_qty || 0))
     store.outboundExceptions.unshift({ id: Date.now(), exception_no: `EXC${Date.now()}`, outbound_order_no: order.order_no, exception_type: 'INSUFFICIENT_STOCK', message: `可用库存不足，需要 ${need} 个 SN，当前可分配 ${candidates.length} 个`, status: 'OPEN', created_at: now() })
     addOutboundOperationLog(store, order.order_no, 'ALLOCATE_AUTO', 'wh_admin', 'FAILED', '库存不足')
     saveStore(store)
@@ -4234,6 +5008,7 @@ function mockAutoAllocate(store: any, id: number) {
 }
 
 function mockAutoAllocateV3(store: any, id: number) {
+  return mockAutoAllocateV3Transactional(store, id)
   const order = mockOutboundOrder(store, id)
   const lines = (store.outboundOrderLines || []).filter((line: Row) => Number(line.order_id) === id)
   let allocated = 0
@@ -4275,7 +5050,7 @@ function mockAutoAllocateV3(store: any, id: number) {
     })
   })
   refreshMockOrderQty(store, id)
-  order.status = shortage > 0 ? (allocated > 0 ? 'PARTIAL_ALLOCATED' : 'ALLOCATION_EXCEPTION') : 'ALLOCATED'
+  order.status = shortage > 0 ? (allocated > 0 ? 'PARTIAL_ALLOCATED' : 'CREATED') : 'ALLOCATED'
   if (shortage > 0) {
     store.outboundExceptions.unshift({ id: Date.now(), exception_no: `EXC${Date.now()}`, outbound_order_no: order.order_no, exception_type: 'INSUFFICIENT_STOCK', message: `可用库存不足，缺口 ${shortage}`, status: 'OPEN', created_at: now() })
     addOutboundOperationLog(store, order.order_no, 'ALLOCATE_AUTO', 'wh_admin', 'FAILED', `库存不足，缺口 ${shortage}`)
@@ -4288,6 +5063,9 @@ function mockAutoAllocateV3(store: any, id: number) {
 
 function mockManualAllocate(store: any, id: number, body: Row) {
   const order = mockOutboundOrder(store, id)
+  if (!canAllocateOutboundOrder(order)) {
+    failOutboundAction(store, order, 'ALLOCATE_MANUAL', body.operator || 'wh_admin', `当前状态【${currentStatusText(order)}】不允许人工分配库存，仅创建或部分分配状态允许分配`)
+  }
   const serials = cleanSerials(body.serialNumbers)
   serials.forEach((sn) => assertMockAllocatable(store, order, sn))
   allocateSerials(store, order, serials, 'MANUAL')
@@ -4297,6 +5075,9 @@ function mockManualAllocate(store: any, id: number, body: Row) {
 
 function mockManualAllocateV3(store: any, id: number, body: Row) {
   const order = mockOutboundOrder(store, id)
+  if (!canAllocateOutboundOrder(order)) {
+    failOutboundAction(store, order, 'ALLOCATE_MANUAL', body.operator || 'wh_admin', `当前状态【${currentStatusText(order)}】不允许人工分配库存，仅创建或部分分配状态允许分配`)
+  }
   const line = (store.outboundOrderLines || []).find((row: Row) => Number(row.order_id) === id && Number(row.id) === Number(body.lineId)) ||
     (store.outboundOrderLines || []).find((row: Row) => Number(row.order_id) === id)
   if (!line) throw new Error('发运订单行不存在')
@@ -4353,12 +5134,15 @@ function allocateSerials(store: any, order: Row, serials: string[], mode: string
     inv.allocated_qty = Number(inv.allocated_qty || 0) + serials.length
   }
   refreshMockOrderQty(store, order.id)
-  order.status = Number(order.allocated_qty) >= Number(order.planned_qty) ? 'ALLOCATED' : 'PENDING_ALLOC'
+  order.status = Number(order.allocated_qty) >= Number(order.planned_qty) ? 'ALLOCATED' : 'PARTIAL_ALLOCATED'
   addOutboundOperationLog(store, order.order_no, mode === 'AUTO' ? 'ALLOCATE_AUTO' : 'ALLOCATE_MANUAL', 'wh_admin', 'SUCCESS', `分配 ${serials.length} 个 SN`)
 }
 
 function mockCancelAllocation(store: any, id: number) {
   const order = mockOutboundOrder(store, id)
+  if (!['PARTIAL_ALLOCATED', 'ALLOCATED', 'PENDING_ALLOC'].includes(order.status)) {
+    failOutboundAction(store, order, 'CANCEL_ALLOCATION', 'wh_admin', `当前状态【${currentStatusText(order)}】不允许取消分配，仅已分配未拣货阶段允许取消分配`)
+  }
   const allocations = store.inventoryAllocations.filter((row: Row) => row.outbound_order_id === id && row.allocation_status === 'ALLOCATED')
   allocations.forEach((allocation: Row) => {
     const sn = store.serialNumbers.find((row: Row) => row.sn_code === allocation.sn_code)
@@ -4373,7 +5157,7 @@ function mockCancelAllocation(store: any, id: number) {
     allocation.allocation_status = 'CANCELED'
   })
   refreshMockOrderQty(store, id)
-  order.status = 'PENDING_ALLOC'
+  order.status = 'CREATED'
   addOutboundOperationLog(store, order.order_no, 'CANCEL_ALLOCATION', 'wh_admin', 'SUCCESS', '取消分配')
   saveStore(store)
   return mockOutboundDetail(store, id)
@@ -4381,6 +5165,9 @@ function mockCancelAllocation(store: any, id: number) {
 
 function mockCancelAllocationsV3(store: any, id: number, body: Row) {
   const order = mockOutboundOrder(store, id)
+  if (!['PARTIAL_ALLOCATED', 'ALLOCATED', 'PENDING_ALLOC'].includes(order.status)) {
+    failOutboundAction(store, order, 'CANCEL_ALLOCATION', body.operator || 'wh_admin', `当前状态【${currentStatusText(order)}】不允许取消分配，仅已分配未拣货阶段允许取消分配`)
+  }
   const ids = Array.isArray(body.allocationIds) ? body.allocationIds.map(Number) : []
   const failedItems: Row[] = []
   let successCount = 0
@@ -4388,7 +5175,7 @@ function mockCancelAllocationsV3(store: any, id: number, body: Row) {
     try {
       const allocation = (store.inventoryAllocations || []).find((row: Row) => Number(row.id) === Number(allocationId) && Number(row.outbound_order_id) === Number(id))
       if (!allocation) throw new Error('分配记录不存在')
-      if (allocation.allocation_status !== 'ALLOCATED') throw new Error('仅允许取消未拣货分配记录')
+      if (!canCancelAllocationOutboundOrder(allocation)) throw new Error('仅允许取消未拣货分配记录')
       const sn = store.serialNumbers.find((row: Row) => row.sn_code === allocation.sn_code)
       if (sn) Object.assign(sn, { status: 'ON_SHELF', locked_flag: 0, locked_order_no: '', outbound_order_no: '' })
       const inv = (store.inventory || []).find((row: Row) => Number(row.id) === Number(allocation.inventory_id)) ||
@@ -4456,10 +5243,13 @@ function mockPickingList(store: any, id: number) {
 
 function mockGeneratePicking(store: any, id: number) {
   const order = mockOutboundOrder(store, id)
+  if (!canPickOutboundOrder(order)) {
+    failOutboundAction(store, order, 'GENERATE_PICKING_TASK', 'wh_admin', `当前状态【${currentStatusText(order)}】不允许生成拣货任务，仅已分配或部分拣货状态允许拣货`)
+  }
   if (!store.pickingTasks.some((row: Row) => row.outbound_order_id === id)) {
     store.pickingTasks.unshift(taskRow(Date.now(), `PICK${Date.now()}`, order, Number(order.allocated_qty || 0), 0, 'PENDING'))
   }
-  order.status = 'PICKING'
+  order.status = deriveOutboundStatusByQty(Number(order.planned_qty || 0), Number(order.allocated_qty || 0), Number(order.picked_qty || 0), Number(order.shipped_qty || 0))
   addOutboundOperationLog(store, order.order_no, 'GENERATE_PICKING_TASK', 'wh_admin', 'SUCCESS', '生成拣货任务')
   saveStore(store)
   return mockOutboundDetail(store, id)
@@ -4470,6 +5260,9 @@ function mockOrderPick(store: any, id: number, body: Row) {
   const line = (store.outboundOrderLines || []).find((row: Row) => Number(row.order_id) === id && Number(row.id) === Number(body.lineId)) ||
     (store.outboundOrderLines || []).find((row: Row) => Number(row.order_id) === id)
   if (!line) throw new Error('发运订单行不存在')
+  if (!canPickOutboundOrder(order, line)) {
+    failOutboundAction(store, order, 'PICK', body.operator || 'wh_admin', `当前状态【${currentStatusText(order)}】不允许拣货，仅已分配或部分拣货状态允许拣货`)
+  }
   const snRequired = Number(line.sn_required ?? line.sn_managed ?? 1) === 1
   const hasOrderAllocation = store.inventoryAllocations.some((row: Row) => Number(row.outbound_order_id) === Number(id) && mockActiveAllocation(row))
   if (snRequired) {
@@ -4601,6 +5394,9 @@ function mockReview(store: any, id: number, body: Row) {
 
 function mockShip(store: any, id: number, body: Row) {
   const order = mockOutboundOrder(store, id)
+  if (!canShipOutboundOrder(order)) {
+    failOutboundAction(store, order, 'SHIP_CONFIRM', body.operator || 'logistics', `当前状态【${currentStatusText(order)}】不允许发货，仅已拣货或部分发运状态允许发货`)
+  }
   const allocations = store.inventoryAllocations.filter((row: Row) => row.outbound_order_id === id && row.allocation_status === 'REVIEWED')
   if (!allocations.length) throw new Error('没有可发货的已复核 SN')
   allocations.forEach((allocation: Row) => {
@@ -4617,10 +5413,15 @@ function mockShip(store: any, id: number, body: Row) {
   order.status = 'SHIPPED'
   order.logistics_company = body.carrier || 'SF'
   order.tracking_no = body.trackingNo || `SF${Date.now()}`
-  store.shipmentRecords.unshift(shipmentRow(`SHIP${Date.now()}`, order, allocations.length, order.logistics_company, order.tracking_no))
-  const traceOk = mockTraceCallback(store, id, Boolean(body.forceTraceFail), false)
-  const sapOk = mockSapCallback(store, id, Boolean(body.forceSapFail), false)
-  order.status = traceOk && sapOk ? 'CALLBACK_SUCCESS' : 'CALLBACK_FAILED'
+  const shipment: Row = shipmentRow(`SHIP${Date.now()}`, order, allocations.length, order.logistics_company, order.tracking_no)
+  shipment.shipment_status = 'SHIPPED'
+  shipment.sap_post_status = 'NOT_POSTED'
+  shipment.sap_material_doc_no = ''
+  shipment.sap_post_result = ''
+  store.shipmentRecords.unshift(shipment)
+  order.sap_post_status = 'NOT_POSTED'
+  order.sap_material_doc_no = ''
+  order.sap_post_result = ''
   const firstLine = store.outboundOrderLines.find((line: Row) => Number(line.order_id) === Number(id) && Number(line.line_no) === 1)
   if (firstLine) firstLine.status = order.status
   addOutboundOperationLog(store, order.order_no, 'SHIP_CONFIRM', 'logistics', 'SUCCESS', '发货确认并扣减库存')
@@ -4628,8 +5429,106 @@ function mockShip(store: any, id: number, body: Row) {
   return mockOutboundDetail(store, id)
 }
 
+function mockShipV3ByLines(store: any, id: number, body: Row, lineShipments: Row[]) {
+  const order = mockOutboundOrder(store, id)
+  if (!canShipOutboundOrder(order)) {
+    failOutboundAction(store, order, 'SHIP_CONFIRM', body.operator || 'logistics', `当前状态【${currentStatusText(order)}】不允许发货，仅已拣货或部分发运状态允许发货`)
+  }
+  const requests = lineShipments
+    .map((item: Row) => ({ lineId: Number(item.lineId || item.detailId || 0), shipQty: Number(item.shipQty || item.quantity || 0) }))
+    .filter((item: Row) => item.lineId && item.shipQty > 0)
+  if (!requests.length) throw new Error('请输入本次发运数量')
+
+  const allocationGroups = requests.map((request: Row) => {
+    const allocations = store.inventoryAllocations.filter((row: Row) =>
+      Number(row.outbound_order_id) === Number(id) &&
+      Number(row.outbound_detail_id || row.line_id || 0) === Number(request.lineId) &&
+      ['PICKED', 'REVIEWED'].includes(row.allocation_status)
+    )
+    const pickedQty = allocations.reduce((total: number, row: Row) => total + Number(row.allocated_qty || 1), 0)
+    if (!allocations.length) throw new Error(`行 ${request.lineId} 没有可发运的已拣货库存`)
+    if (request.shipQty > pickedQty) throw new Error(`行 ${request.lineId} 发运数量不能超过已拣货未发运数量`)
+    return { ...request, allocations }
+  })
+
+  const shippedAllocations: Row[] = []
+  allocationGroups.forEach((group: Row) => {
+    let remainingQty = Number(group.shipQty || 0)
+    group.allocations.forEach((allocation: Row) => {
+      if (remainingQty <= 0) return
+      const allocationQty = Number(allocation.allocated_qty || 1)
+      const shipQty = Math.min(allocationQty, remainingQty)
+      remainingQty -= shipQty
+      if (shipQty < allocationQty) {
+        allocation.allocated_qty = allocationQty - shipQty
+        const shippedAllocation = {
+          ...allocation,
+          id: Date.now() + Math.random(),
+          allocation_no: `${allocation.allocation_no || 'ALLOC'}-SHIP-${Date.now()}`,
+          allocated_qty: shipQty,
+          allocation_status: 'SHIPPED'
+        }
+        store.inventoryAllocations.unshift(shippedAllocation)
+        shippedAllocations.push(shippedAllocation)
+      } else {
+        allocation.allocation_status = 'SHIPPED'
+        shippedAllocations.push(allocation)
+      }
+    })
+  })
+
+  const shippedQty = shippedAllocations.reduce((total: number, row: Row) => total + Number(row.allocated_qty || 1), 0)
+  shippedAllocations.forEach((allocation: Row) => {
+    const inv = (store.inventory || []).find((row: Row) => Number(row.id) === Number(allocation.inventory_id)) ||
+      (store.inventory || []).find((row: Row) => row.warehouse_code === order.warehouse_code && row.product_code === allocation.product_code && (!allocation.batch_no || row.batch_no === allocation.batch_no))
+    const qty = Number(allocation.allocated_qty || 1)
+    if (inv) {
+      inv.total_qty = Math.max(Number(inv.total_qty || 0) - qty, 0)
+      inv.allocated_qty = Math.max(Number(inv.allocated_qty || 0) - qty, 0)
+    }
+    if (allocation.sn_code) {
+      const sn = store.serialNumbers.find((row: Row) => row.sn_code === allocation.sn_code)
+      if (sn) Object.assign(sn, { status: 'SHIPPED', locked_flag: 0, locked_order_no: '', outbound_order_no: order.order_no, sold_flag: 1, market_flag: 1 })
+    }
+  })
+
+  refreshMockOrderQty(store, id)
+  refreshMockTaskRows(store, id)
+  const fullShipped = Number(order.shipped_qty || 0) >= Number(order.planned_qty || 0)
+  const shipmentStatus = fullShipped ? 'SHIPPED' : 'PARTIAL_SHIPPED'
+  const carrier = body.carrierName || body.carrier || body.logisticsCompany || 'SF'
+  const trackingNo = body.trackingNo || body.tracking_no || `SF${Date.now()}`
+  order.status = shipmentStatus
+  order.carrier_name = carrier
+  order.logistics_company = carrier
+  order.tracking_no = trackingNo
+  order.updated_at = now()
+  store.shipmentRecords.unshift({
+    ...shipmentRow(`SHIP${Date.now()}`, order, shippedQty, carrier, trackingNo),
+    shipment_status: shipmentStatus,
+    sap_post_status: 'NOT_POSTED',
+    remark: body.remark || '发运订单 Mock 多行发运'
+  })
+  const shipment = store.shipmentRecords[0]
+  shipment.sap_post_status = 'NOT_POSTED'
+  shipment.sap_material_doc_no = ''
+  shipment.sap_post_result = ''
+  order.status = shipmentStatus
+  order.sap_post_status = 'NOT_POSTED'
+  order.sap_material_doc_no = ''
+  order.sap_post_result = ''
+  addOutboundOperationLog(store, order.order_no, 'SHIP_CONFIRM', body.operator || 'logistics', 'SUCCESS', `多行发运确认 ${shippedQty}`)
+  saveStore(store)
+  return mockOutboundDetail(store, id)
+}
+
 function mockShipV3(store: any, id: number, body: Row) {
   const order = mockOutboundOrder(store, id)
+  const lineShipments = Array.isArray(body.lineShipments) ? body.lineShipments.filter((row: Row) => Number(row.shipQty || row.quantity || 0) > 0) : []
+  if (lineShipments.length) return mockShipV3ByLines(store, id, body, lineShipments)
+  if (!canShipOutboundOrder(order)) {
+    failOutboundAction(store, order, 'SHIP_CONFIRM', body.operator || 'logistics', `当前状态【${currentStatusText(order)}】不允许发货，仅已拣货或部分发运状态允许发货`)
+  }
   const lineId = Number(body.lineId || body.detailId || 0)
   const pickedAllocations = store.inventoryAllocations.filter((row: Row) => {
     const sameOrder = Number(row.outbound_order_id) === Number(id)
@@ -4699,17 +5598,13 @@ function mockShipV3(store: any, id: number, body: Row) {
     remark: body.remark || '发运订单 Mock 发运'
   })
   const shipment = store.shipmentRecords[0]
-
-  const traceOk = mockTraceCallback(store, id, Boolean(body.forceTraceFail), false)
-  const sapOk = mockSapCallback(store, id, Boolean(body.forceSapFail), false)
-  shipment.sap_post_status = sapOk ? 'SUCCESS' : 'FAILED'
-  shipment.sap_material_doc_no = sapOk ? order.sap_material_doc_no : ''
-  shipment.sap_post_result = sapOk ? 'SAP 出库扣减 Mock 成功' : 'SAP 出库扣减 Mock 失败'
+  shipment.sap_post_status = 'NOT_POSTED'
+  shipment.sap_material_doc_no = ''
+  shipment.sap_post_result = ''
   order.status = shipmentStatus
-  order.sap_post_result = sapOk ? 'SAP 出库扣减 Mock 成功' : 'SAP 出库扣减 Mock 失败'
-  if (!traceOk || !sapOk) {
-    order.sap_post_status = sapOk ? order.sap_post_status : 'FAILED'
-  }
+  order.sap_post_status = 'NOT_POSTED'
+  order.sap_material_doc_no = ''
+  order.sap_post_result = ''
   addOutboundOperationLog(store, order.order_no, 'SHIP_CONFIRM', body.operator || 'logistics', 'SUCCESS', `发运确认 ${shippedQty}`)
   saveStore(store)
   return mockOutboundDetail(store, id)
@@ -4729,7 +5624,6 @@ function mockTraceCallback(store: any, id: number, forceFail: boolean, persist =
   })
   addInterfaceLog(store, 'TRACE_OUTBOUND_SN', 'WMS', 'TRACE', order.order_no, '/api/mock/trace/outbound-sn', 'SUCCESS', '')
   order.trace_post_status = 'POSTED'
-  if (order.sap_post_status === 'POSTED') order.status = 'CALLBACK_SUCCESS'
   if (persist) saveStore(store)
   return true
 }
@@ -4739,20 +5633,56 @@ function mockSapCallback(store: any, id: number, forceFail: boolean, persist = t
   if (forceFail) {
     addInterfaceLog(store, 'SAP_OUTBOUND_POSTING', 'WMS', 'SAP', order.order_no, '/api/mock/sap/material-documents', 'FAILED', 'SAP 出库扣减 Mock 失败')
     order.sap_post_status = 'FAILED'
+    order.sap_material_doc_no = ''
+    order.sap_post_result = 'SAP 出库扣减 Mock 失败'
     if (persist) saveStore(store)
     return false
   }
   addInterfaceLog(store, 'SAP_OUTBOUND_POSTING', 'WMS', 'SAP', order.order_no, '/api/mock/sap/material-documents', 'SUCCESS', '')
-  order.sap_post_status = 'POSTED'
+  order.sap_post_status = 'SUCCESS'
   order.sap_material_doc_no = `49${Date.now()}`
-  if (order.trace_post_status === 'POSTED') order.status = 'CALLBACK_SUCCESS'
+  order.sap_post_result = 'SAP 出库扣减 Mock 成功'
   if (persist) saveStore(store)
   return true
 }
 
+function mockPostOutboundSap(store: any, id: number, body: Row) {
+  const order = mockOutboundOrder(store, id)
+  if (!canPostSapOutboundOrder(order)) {
+    failOutboundAction(store, order, 'POST_SAP', body.operator || 'logistics', `当前状态【${currentStatusText(order)}】且 SAP 状态【${order.sap_post_status || '空'}】不允许回传 SAP，仅关闭且未回传或回传失败的发运订单允许回传`)
+  }
+  const sapOk = mockSapCallback(store, id, Boolean(body.forceSapFail), false)
+  order.status = 'CLOSED'
+  order.updated_at = now()
+  const message = sapOk ? `SAP 回传成功，凭证号 ${order.sap_material_doc_no}` : 'SAP 出库扣减 Mock 失败'
+  order.sap_post_result = message
+  addOutboundOperationLog(store, order.order_no, 'POST_SAP', body.operator || 'logistics', sapOk ? 'SUCCESS' : 'FAILED', message)
+  saveStore(store)
+  return mockOutboundDetail(store, id)
+}
+
+function mockRetryOutboundSap(store: any, orderIds: number[]) {
+  let successCount = 0
+  const failedItems: Row[] = []
+  orderIds.forEach((rawId) => {
+    const id = Number(rawId)
+    try {
+      const detail = mockPostOutboundSap(store, id, { operator: 'logistics' })
+      if (detail.order?.sap_post_status === 'SUCCESS') successCount += 1
+      else failedItems.push({ id, orderNo: detail.order?.order_no, reason: detail.order?.sap_post_result || 'SAP 回传失败' })
+    } catch (error) {
+      const order = (store.outboundOrders || []).find((row: Row) => Number(row.id) === id)
+      failedItems.push({ id, orderNo: order?.order_no || id, reason: error instanceof Error ? error.message : 'SAP 回传失败' })
+    }
+  })
+  return { successCount, failedCount: failedItems.length, failedItems }
+}
+
 function mockCancelOrder(store: any, id: number, body: Row) {
   const order = mockOutboundOrder(store, id)
-  if (!['CREATED', 'PENDING_ALLOC'].includes(order.status)) throw new Error('只有创建状态发运订单允许取消')
+  if (!canCancelOutboundOrder(order)) {
+    failOutboundAction(store, order, 'CANCEL', body.operator || 'planner', `当前状态【${currentStatusText(order)}】不允许取消发运订单，仅创建状态允许取消`)
+  }
   order.status = 'CANCELED'
   ;(store.outboundOrderLines || []).filter((line: Row) => Number(line.order_id) === id).forEach((line: Row) => {
     line.status = 'CANCELED'
@@ -4767,6 +5697,9 @@ function mockCancelPickV3(store: any, id: number, pickId: number, body: Row) {
   const order = mockOutboundOrder(store, id)
   const record = (store.pickingRecords || []).find((row: Row) => Number(row.id) === Number(pickId) && Number(row.outbound_order_id) === Number(id))
   if (!record) throw new Error('拣货记录不存在')
+  if (!canCancelPickOutboundOrder({ ...record, order_status: order.status })) {
+    failOutboundAction(store, order, 'CANCEL_PICK', body.operator || 'wh_admin', `当前状态【${currentStatusText(order)}】不允许取消拣货，仅部分拣货或完全拣货状态允许取消拣货`)
+  }
   if (record.result === 'CANCELED') throw new Error('该拣货记录已取消')
   const task = (store.pickingTasks || []).find((row: Row) => Number(row.id) === Number(record.task_id))
   const qty = Math.max(Number(record.picked_qty || 1), 1)
@@ -4826,6 +5759,9 @@ function mockCancelShipmentV3(store: any, id: number, shipmentId: number, body: 
   const order = mockOutboundOrder(store, id)
   const shipment = (store.shipmentRecords || []).find((row: Row) => Number(row.id) === Number(shipmentId) && Number(row.outbound_order_id) === Number(id))
   if (!shipment) throw new Error('发运批次不存在')
+  if (!canCancelShipOutboundOrder({ ...shipment, status: order.status })) {
+    failOutboundAction(store, order, 'CANCEL_SHIPMENT', body.operator || 'logistics', `当前状态【${currentStatusText(order)}】不允许取消发货，仅部分发运且 SAP 未成功回传时允许取消发货`)
+  }
   if (shipment.shipment_status === 'CANCELED') throw new Error('该发运批次已取消')
   if (['SUCCESS', 'POSTED'].includes(shipment.sap_post_status)) throw new Error('当前发货批次已回传 SAP 成功，不允许直接取消发货，请走 SAP 冲销流程。')
   if (['CLOSED', 'CANCELED'].includes(order.status)) throw new Error('已关闭或已取消订单不允许取消发货')
@@ -4875,6 +5811,9 @@ function rollbackShipmentInventory(store: any, order: Row, allocation: Row) {
 function mockCloseOrder(store: any, id: number, body: Row) {
   const order = mockOutboundOrder(store, id)
   refreshMockOrderQty(store, id)
+  if (!canCloseOutboundOrder(order)) {
+    failOutboundAction(store, order, 'CLOSE', body.operator || 'manager', `当前状态【${currentStatusText(order)}】不允许关闭发运订单，仅部分发运或完全发运状态允许关闭`)
+  }
   if (Number(order.shipped_qty || 0) <= 0) throw new Error('没有发运记录的订单不允许关闭')
   const lines = (store.outboundOrderLines || []).filter((line: Row) => Number(line.order_id) === id)
   if (Number(order.shipped_qty || 0) < Number(order.planned_qty || 0)) {
@@ -4935,7 +5874,12 @@ function mockCloseOrder(store: any, id: number, body: Row) {
     line.status = 'CLOSED'
     line.line_status = 'CLOSED'
   })
+  const sapOk = mockSapCallback(store, id, Boolean(body.forceSapFail), false)
+  order.status = 'CLOSED'
+  order.updated_at = now()
+  order.sap_post_result = sapOk ? `SAP 回传成功，凭证号 ${order.sap_material_doc_no}` : 'SAP 出库扣减 Mock 失败'
   addOutboundOperationLog(store, order.order_no, 'CLOSE', body.operator || 'manager', 'SUCCESS', '关闭发运订单')
+  addOutboundOperationLog(store, order.order_no, 'CLOSE_TRIGGER_SAP', body.operator || 'manager', sapOk ? 'SUCCESS' : 'FAILED', order.sap_post_result)
   saveStore(store)
   return mockOutboundDetail(store, id)
 }
@@ -5219,6 +6163,9 @@ function mockValidateSnCollection(store: any, orderId: number, lineId: number, b
 function mockConfirmSnCollection(store: any, orderId: number, lineId: number, body: Row) {
   const order = requireMockOrder(store, orderId)
   const line = requireMockInboundLine(store, orderId, lineId)
+  if (!canCollectSnInboundOrder(order, line)) {
+    failInboundAction(store, order, 'SN_COLLECT', body.operator || 'wh_admin', `当前状态【${currentStatusText(order)}】不允许采集 SN，仅创建或部分收货状态允许采集 SN`)
+  }
   const validation = mockValidateSnCollection(store, orderId, lineId, body)
   if (!validation.valid) {
     const failed = validation.items.find((row: Row) => row.status !== 'PASS')
@@ -5281,7 +6228,9 @@ function mockConfirmSnCollection(store: any, orderId: number, lineId: number, bo
 
 function mockReceive(store: any, id: number, body: Row) {
   const order = requireMockOrder(store, id)
-  if (!['CREATED', 'PARTIAL_RECEIVED', 'RECEIVING', 'RECEIVED'].includes(order.status)) throw new Error('当前状态不允许收货')
+  if (!canReceiveInboundOrder(order)) {
+    throw new Error(`当前状态【${currentStatusText(order)}】不允许收货，仅创建或部分收货状态允许收货`)
+  }
   const location = store.locations.find((row: Row) => row.location_code === body.locationCode && row.warehouse_code === order.warehouse_code)
   if (!body.locationCode || !location) throw new Error('请选择当前入库仓库下的目标库位')
   if (Number(location.frozen_flag || 0) === 1) throw new Error('目标库位已冻结，不允许收货')
@@ -5503,7 +6452,10 @@ function mockSapPost(store: any, id: number, body: Row) {
   const order = requireMockOrder(store, id)
   const receiptRows = (store.inboundReceipts || [])
     .filter((receipt: Row) => Number(receipt.inbound_order_id) === Number(id) && ['NOT_POSTED', 'FAILED'].includes(receipt.sap_post_status || 'NOT_POSTED'))
-  if (!receiptRows.length) throw new Error('当前单据没有待回传 SAP 的收货批次')
+  if (!canPostSapInboundOrder({ ...order, pending_sap_receipt_count: receiptRows.length })) {
+    failInboundAction(store, order, 'SAP_POSTING', body.operator || 'wh_admin', `当前状态【${currentStatusText(order)}】且 SAP 状态【${order.sap_post_status || '空'}】不允许回传 SAP，仅已收货且存在未回传或失败收货批次时允许回传`)
+  }
+  if (!receiptRows.length) failInboundAction(store, order, 'SAP_POSTING', body.operator || 'wh_admin', '当前单据没有待回传 SAP 的收货批次')
   if (body.forceFail) {
     const message = 'SAP Mock 入库过账失败：移动类型或工单状态异常'
     receiptRows.forEach((receipt: Row) => {
@@ -5655,6 +6607,88 @@ function mockCreateInboundOrder(store: any, body: Row) {
   return productionDetail(store, Number(order.id))
 }
 
+function assertMockInboundOrderEditable(store: any, order: Row, operator = 'wh_admin') {
+  if (!canEditInboundOrder(order)) {
+    failInboundAction(store, order, 'EDIT_INBOUND_ORDER', operator, `当前状态【${currentStatusText(order)}】不允许编辑预期到货通知单，仅创建状态且未采集、未收货、未上架时允许编辑`)
+  }
+  const hasCollectedSn = (store.serialNumbers || []).some((row: Row) =>
+    row.inbound_order_no === order.order_no && ['COLLECTED', 'RECEIVED', 'ON_SHELF'].includes(row.status)
+  )
+  if (hasCollectedSn) failInboundAction(store, order, 'EDIT_INBOUND_ORDER', operator, '当前预期到货通知单已有 SN 采集记录，不允许编辑')
+  const hasReceipt = (store.inboundReceipts || []).some((row: Row) => Number(row.inbound_order_id) === Number(order.id) && row.status !== 'CANCELED')
+  if (hasReceipt) failInboundAction(store, order, 'EDIT_INBOUND_ORDER', operator, '当前预期到货通知单已有收货记录，不允许编辑')
+  const hasLineWork = (store.inboundOrderLines || []).some((line: Row) =>
+    Number(line.order_id) === Number(order.id) && (Number(line.received_qty || 0) > 0 || Number(line.shelved_qty || 0) > 0)
+  )
+  if (hasLineWork) failInboundAction(store, order, 'EDIT_INBOUND_ORDER', operator, '当前预期到货通知单已有收货或上架数量，不允许编辑')
+}
+
+function mockUpdateInboundOrder(store: any, id: number, body: Row) {
+  const order = requireMockOrder(store, id)
+  assertMockInboundOrderEditable(store, order, body.operator || 'wh_admin')
+  const inputLines = Array.isArray(body.lines) ? body.lines : []
+  if (!inputLines.length) throw new Error('预期到货通知单至少需要一条明细')
+  const warehouse = store.warehouses.find((row: Row) => row.warehouse_code === body.warehouseCode) ||
+    store.warehouses.find((row: Row) => row.warehouse_code === order.warehouse_code) ||
+    store.warehouses[0]
+  const ownerCode = body.ownerCode || order.owner_code || '3060'
+  const usedLineNos = new Set<number>()
+  inputLines.forEach((line: Row) => {
+    const lineNo = Number(line.lineNo || line.line_no || 0)
+    if (!lineNo || usedLineNos.has(lineNo)) throw new Error('入库明细行号不能为空且不能重复')
+    usedLineNos.add(lineNo)
+    if (Number(line.plannedQty || line.planned_qty || 0) <= 0) throw new Error('计划数量必须大于 0')
+    const product = store.products.find((row: Row) => Number(row.id) === Number(line.productId)) ||
+      store.products.find((row: Row) => row.owner_code === ownerCode && row.product_code === (line.productCode || line.product_code)) ||
+      store.products.find((row: Row) => row.product_code === (line.productCode || line.product_code))
+    if (!product) throw new Error(`产品不存在或不属于货主：${ownerCode}/${line.productCode || line.product_code}`)
+  })
+  Object.assign(order, {
+    source_order_no: body.sourceOrderNo || order.source_order_no,
+    mes_work_order_no: body.mesWorkOrderNo || order.mes_work_order_no,
+    inbound_type: body.inboundType || order.inbound_type || 'PRODUCTION',
+    source_system: body.sourceSystem || order.source_system || 'MANUAL',
+    warehouse_code: warehouse.warehouse_code,
+    warehouse_name: warehouse.warehouse_name,
+    owner_code: ownerCode,
+    owner_name: body.ownerName || order.owner_name,
+    ship_from_country: body.shipFromCountry || body.ship_from_country || '',
+    shipFromCountry: body.shipFromCountry || body.ship_from_country || '',
+    sap_plant: body.sapPlant || ownerCode,
+    related_order_no: body.relatedOrderNo || order.related_order_no || '',
+    plan_arrival_date: body.planArrivalDate || order.plan_arrival_date || '',
+    product_code: '',
+    product_name: '',
+    remark: body.remark || '',
+    updated_by: body.operator || 'wh_admin',
+    updated_at: now()
+  })
+  store.inboundOrderLines = (store.inboundOrderLines || []).filter((line: Row) => Number(line.order_id) !== Number(id))
+  inputLines.forEach((item: Row, index: number) => {
+    const product = store.products.find((row: Row) => Number(row.id) === Number(item.productId)) ||
+      store.products.find((row: Row) => row.owner_code === order.owner_code && row.product_code === (item.productCode || item.product_code)) ||
+      store.products.find((row: Row) => row.product_code === (item.productCode || item.product_code)) ||
+      store.products[0]
+    const line = inboundLine(order, Number(item.lineNo || item.line_no || (index + 1) * 10), product, Number(item.plannedQty || item.planned_qty || 1), 0, 0)
+    if (item.batchNo || item.batch_no) line.batch_no = item.batchNo || item.batch_no
+    line.sap_plant = item.sapPlant || item.sap_plant || order.sap_plant
+    line.sap_storage_location = item.sapStorageLocation || item.sap_storage_location || ''
+    line.sn_required = item.snRequired == null ? Number(product.sn_managed || 0) : (item.snRequired ? 1 : 0)
+    line.quality_status = item.qualityStatus || item.quality_status || 'QUALIFIED'
+    line.status = 'CREATED'
+    store.inboundOrderLines.push(line)
+    if (index === 0) {
+      order.product_code = product.product_code
+      order.product_name = product.product_name
+    }
+  })
+  refreshInboundHeaderStatus(store, Number(order.id))
+  order.status = 'CREATED'
+  addOperationLog(store, order.order_no, 'EDIT_INBOUND_ORDER', body.operator || 'wh_admin', 'SUCCESS', `编辑预期到货通知单 ${inputLines.length} 行`)
+  saveStore(store)
+  return productionDetail(store, Number(order.id))
+}
+
 function mockCancelSnCollection(store: any, orderId: number, lineId: number, body: Row) {
   const order = requireMockOrder(store, orderId)
   const line = requireMockInboundLine(store, orderId, lineId)
@@ -5681,13 +6715,15 @@ function mockCancelSnCollection(store: any, orderId: number, lineId: number, bod
 
 function mockCancelInboundOrder(store: any, orderId: number, body: Row) {
   const order = requireMockOrder(store, orderId)
-  if (order.status !== 'CREATED') throw new Error('只有创建状态的预期到货通知单允许取消')
+  if (!canCancelInboundOrder(order)) {
+    failInboundAction(store, order, 'CANCEL_INBOUND_ORDER', body.operator || 'planner', `当前状态【${currentStatusText(order)}】不允许取消预期到货通知单，仅创建状态且未采集、未收货时允许取消`)
+  }
   const hasCollectedSn = (store.serialNumbers || []).some((row: Row) =>
     row.inbound_order_no === order.order_no && ['COLLECTED', 'RECEIVED', 'ON_SHELF'].includes(row.status)
   )
-  if (hasCollectedSn) throw new Error('当前入库单已采集 SN，不允许直接取消，请先取消 SN 采集')
+  if (hasCollectedSn) failInboundAction(store, order, 'CANCEL_INBOUND_ORDER', body.operator || 'planner', '当前入库单已采集 SN，不允许直接取消，请先取消 SN 采集')
   const hasReceipt = (store.inboundReceipts || []).some((row: Row) => Number(row.inbound_order_id) === Number(orderId) && row.status !== 'CANCELED')
-  if (hasReceipt) throw new Error('当前入库单已收货，不允许直接取消')
+  if (hasReceipt) failInboundAction(store, order, 'CANCEL_INBOUND_ORDER', body.operator || 'planner', '当前入库单已收货，不允许直接取消')
   order.status = 'CANCELED'
   ;(store.inboundOrderLines || []).filter((line: Row) => Number(line.order_id) === Number(orderId)).forEach((line: Row) => {
     line.status = 'CANCELED'
@@ -5701,6 +6737,9 @@ function mockCancelInboundReceipt(store: any, orderId: number, receiptId: number
   const order = requireMockOrder(store, orderId)
   const receipt = (store.inboundReceipts || []).find((row: Row) => Number(row.id) === Number(receiptId) && Number(row.inbound_order_id) === Number(orderId))
   if (!receipt) throw new Error('收货批次不存在')
+  if (!canCancelReceiveInboundOrder({ ...receipt, status: order.status, receipt_status: receipt.status })) {
+    failInboundAction(store, order, 'CANCEL_RECEIPT', body.operator || 'wh_admin', `当前状态【${currentStatusText(order)}】不允许取消收货，已取消、已关闭、已上架或 SAP 成功回传的收货批次不允许取消`)
+  }
   if (receipt.status === 'CANCELED') throw new Error('该收货批次已取消')
   if (['SUCCESS', 'POSTED'].includes(receipt.sap_post_status)) throw new Error('当前收货批次已回传 SAP 成功，不允许直接取消收货，请走 SAP 冲销流程。')
   if (['CLOSED', 'CANCELED'].includes(order.status)) throw new Error('已关闭或已取消订单不允许取消收货')

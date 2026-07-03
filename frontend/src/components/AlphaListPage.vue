@@ -6,7 +6,7 @@
           <div class="page-title">{{ title }}</div>
           <div v-if="subtitle" class="muted">{{ subtitle }}</div>
         </div>
-        <el-button type="primary" @click="load">刷新</el-button>
+        <el-button type="primary" @click="load">{{ t('common.refresh') }}</el-button>
       </div>
     </template>
 
@@ -17,24 +17,24 @@
           v-model="query[field.prop]"
           clearable
           filterable
-          placeholder="请选择"
+          :placeholder="t('common.pleaseSelect')"
           style="width: 180px"
         >
           <el-option v-for="option in field.options || []" :key="option.value" :label="option.label" :value="option.value" />
         </el-select>
-        <el-input v-else v-model="query[field.prop]" clearable placeholder="请输入" style="width: 180px" />
+        <el-input v-else v-model="query[field.prop]" clearable :placeholder="t('common.pleaseInput')" style="width: 180px" />
       </el-form-item>
       <el-form-item>
-        <el-button type="primary" @click="search">查询</el-button>
-        <el-button @click="reset">重置</el-button>
+        <el-button type="primary" @click="search">{{ t('common.query') }}</el-button>
+        <el-button @click="reset">{{ t('common.reset') }}</el-button>
       </el-form-item>
     </el-form>
 
     <div class="toolbar">
-      <el-button v-if="showCreate !== false" type="primary" @click="openAdd">新增</el-button>
+      <el-button v-if="showCreate !== false" type="primary" @click="openAdd">{{ t('common.add') }}</el-button>
       <slot name="toolbar" :query="query" :rows="rows" :selected-rows="selectedRows" :reload="load">
-        <el-button @click="mockAction('导入')">导入</el-button>
-        <el-button @click="mockAction('导出')">导出</el-button>
+        <el-button @click="mockAction(t('common.import'))">{{ t('common.import') }}</el-button>
+        <el-button @click="mockAction(t('common.export'))">{{ t('common.export') }}</el-button>
       </slot>
       <el-button v-if="scanEnabled" @click="scanVisible = true">扫码输入</el-button>
     </div>
@@ -58,7 +58,7 @@
       @selection-change="handleSelectionChange"
     >
       <el-table-column type="selection" width="42" />
-      <el-table-column type="index" label="序号" width="64" />
+      <el-table-column type="index" :label="t('common.sequence')" width="64" />
       <el-table-column
         v-for="column in columns"
         :key="column.prop"
@@ -69,21 +69,21 @@
       >
         <template #default="{ row }">
           <el-tag v-if="column.type === 'status'" :type="statusType(row[column.prop])" effect="light">
-            {{ row[column.prop] || '-' }}
+            {{ inventoryStatusLabel(row[column.prop], row[column.prop] || '-') }}
           </el-tag>
           <el-tag v-else-if="column.type === 'boolean'" :type="row[column.prop] ? 'success' : 'info'" effect="light">
-            {{ row[column.prop] ? '是' : '否' }}
+            {{ row[column.prop] ? t('common.yes') : t('common.no') }}
           </el-tag>
           <span v-else>{{ row[column.prop] ?? '-' }}</span>
         </template>
       </el-table-column>
-      <el-table-column label="操作" fixed="right" width="220">
+      <el-table-column :label="t('common.operations')" fixed="right" width="220">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openView(row)">查看</el-button>
-          <el-button link type="primary" @click="openEdit(row)">编辑</el-button>
+          <el-button link type="primary" @click="openView(row)">{{ t('common.view') }}</el-button>
+          <el-button link type="primary" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
           <el-popconfirm title="确认删除该记录？" @confirm="removeRow(row)">
             <template #reference>
-              <el-button link type="danger">删除</el-button>
+              <el-button link type="danger">{{ t('common.delete') }}</el-button>
             </template>
           </el-popconfirm>
         </template>
@@ -119,7 +119,7 @@
               v-model="form[field.prop]"
               clearable
               filterable
-              placeholder="请选择"
+              :placeholder="t('common.pleaseSelect')"
               style="width: 100%"
             >
               <el-option v-for="option in field.options || []" :key="option.value" :label="option.label" :value="option.value" />
@@ -132,8 +132,8 @@
       </el-row>
     </el-form>
     <template #footer>
-      <el-button @click="dialogVisible = false">取消</el-button>
-      <el-button v-if="dialogMode !== 'view'" type="primary" @click="save">保存</el-button>
+      <el-button @click="dialogVisible = false">{{ t('common.cancel') }}</el-button>
+      <el-button v-if="dialogMode !== 'view'" type="primary" @click="save">{{ t('common.save') }}</el-button>
     </template>
   </el-dialog>
 
@@ -151,6 +151,7 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage } from 'element-plus'
 import type { PageResult } from '../api/http'
+import { inventoryStatusLabel, useI18n } from '../i18n'
 
 export interface FieldOption {
   label: string
@@ -185,6 +186,7 @@ const props = defineProps<{
   highlightInventory?: boolean
   scanEnabled?: boolean
 }>()
+const { t } = useI18n()
 
 const loading = ref(false)
 const rows = ref<Record<string, any>[]>([])
@@ -204,7 +206,12 @@ const activeFormFields = computed<FieldConfig[]>(() => props.formFields?.length
       .filter((item) => item.prop !== 'id')
       .map((item) => ({ prop: item.prop, label: item.label, type: 'text' }))
 )
-const dialogTitle = computed(() => dialogMode.value === 'add' ? `新增${props.title}` : dialogMode.value === 'edit' ? `编辑${props.title}` : `查看${props.title}`)
+const dialogTitle = computed(() => dialogMode.value === 'add'
+  ? `${t('common.add')} ${props.title}`
+  : dialogMode.value === 'edit'
+    ? `${t('common.edit')} ${props.title}`
+    : `${t('common.view')} ${props.title}`
+)
 
 onMounted(load)
 

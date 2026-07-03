@@ -27,9 +27,8 @@ logs/
 .runtime/
 
 # Env
-.env
-.env.local
-.env.*.local
+.env*
+!.env.example
 
 # Temp
 tmp/

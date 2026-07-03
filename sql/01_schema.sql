@@ -572,7 +572,7 @@ CREATE TABLE wms_outbound_order (
   picked_qty INT NOT NULL DEFAULT 0,
   review_qty INT NOT NULL DEFAULT 0,
   shipped_qty INT NOT NULL DEFAULT 0,
-  status VARCHAR(32) NOT NULL DEFAULT 'PENDING_ALLOC',
+  status VARCHAR(32) NOT NULL DEFAULT 'CREATED',
   logistics_company VARCHAR(64) NULL,
   carrier_name VARCHAR(128) NULL,
   tracking_no VARCHAR(64) NULL,
@@ -607,7 +607,7 @@ CREATE TABLE wms_outbound_order_detail (
   review_qty INT NOT NULL DEFAULT 0,
   shipped_qty INT NOT NULL DEFAULT 0,
   batch_no VARCHAR(64) NULL,
-  status VARCHAR(32) NOT NULL DEFAULT 'PENDING_ALLOC',
+  status VARCHAR(32) NOT NULL DEFAULT 'CREATED',
   CONSTRAINT fk_outbound_detail_order FOREIGN KEY (order_id) REFERENCES wms_outbound_order(id),
   CONSTRAINT fk_outbound_detail_product FOREIGN KEY (product_id) REFERENCES md_product(id)
 ) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;

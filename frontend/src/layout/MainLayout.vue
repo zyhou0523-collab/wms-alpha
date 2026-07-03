@@ -16,15 +16,15 @@
         <template v-for="item in menus" :key="item.id">
           <el-menu-item v-if="!item.children?.length" :index="item.path">
             <el-icon><component :is="item.icon || 'Menu'" /></el-icon>
-            <span>{{ item.title }}</span>
+            <span>{{ menuTitle(item.title, item.path) }}</span>
           </el-menu-item>
           <el-sub-menu v-else :index="item.id">
             <template #title>
               <el-icon><component :is="item.icon || 'Menu'" /></el-icon>
-              <span>{{ item.title }}</span>
+              <span>{{ menuTitle(item.title, item.path) }}</span>
             </template>
             <el-menu-item v-for="child in item.children" :key="child.id" :index="child.path">
-              {{ child.title }}
+              {{ menuTitle(child.title, child.path) }}
             </el-menu-item>
           </el-sub-menu>
         </template>
@@ -35,8 +35,8 @@
       <el-header class="topbar">
         <div class="topbar-left">
           <el-breadcrumb separator="/">
-            <el-breadcrumb-item>首页</el-breadcrumb-item>
-            <el-breadcrumb-item>{{ route.meta.title || '页面' }}</el-breadcrumb-item>
+            <el-breadcrumb-item>{{ t('common.home') }}</el-breadcrumb-item>
+            <el-breadcrumb-item>{{ currentRouteTitle }}</el-breadcrumb-item>
           </el-breadcrumb>
         </div>
         <div class="topbar-right">
@@ -44,7 +44,7 @@
             v-model="warehouse.currentWarehouseCode"
             class="warehouse-selector"
             size="small"
-            placeholder="仓库范围"
+            :placeholder="t('common.warehouseScope')"
             @change="handleWarehouseChange"
           >
             <el-option
@@ -54,6 +54,9 @@
               :value="item.warehouse_code"
             />
           </el-select>
+          <el-select v-model="languageValue" class="language-selector" size="small" :aria-label="t('common.language')">
+            <el-option v-for="item in supportedLocales" :key="item.value" :label="item.label" :value="item.value" />
+          </el-select>
           <el-tag effect="plain">{{ auth.user?.role_name || 'Alpha 角色' }}</el-tag>
           <el-dropdown>
             <span class="user-entry">
@@ -62,7 +65,7 @@
             </span>
             <template #dropdown>
               <el-dropdown-menu>
-                <el-dropdown-item @click="logout">退出登录</el-dropdown-item>
+                <el-dropdown-item @click="logout">{{ t('common.logout') }}</el-dropdown-item>
               </el-dropdown-menu>
             </template>
           </el-dropdown>
@@ -76,11 +79,12 @@
 </template>
 
 <script setup lang="ts">
-import { onMounted, onUnmounted, ref } from 'vue'
+import { computed, onMounted, onUnmounted, ref } from 'vue'
 import { useRoute, useRouter } from 'vue-router'
 import { useAuthStore } from '../stores/auth'
 import { useWarehouseStore } from '../stores/warehouse'
 import { menuApi } from '../api/services'
+import { type LocaleCode, useI18n } from '../i18n'
 
 const route = useRoute()
 const router = useRouter()
@@ -88,6 +92,12 @@ const auth = useAuthStore()
 const warehouse = useWarehouseStore()
 const menus = ref<any[]>([])
 const warehouseViewKey = ref(0)
+const { locale, menuTitle, routeTitle, setLocale, supportedLocales, t } = useI18n()
+const currentRouteTitle = computed(() => routeTitle(String(route.meta.title || ''), route.path))
+const languageValue = computed({
+  get: () => locale.value,
+  set: (value: LocaleCode) => setLocale(value)
+})
 
 onMounted(async () => {
   menus.value = await menuApi()
@@ -167,6 +177,10 @@ function logout() {
 
 .warehouse-selector {
   width: 180px;
+}
+
+.language-selector {
+  width: 132px;
 }
 
 .user-entry {

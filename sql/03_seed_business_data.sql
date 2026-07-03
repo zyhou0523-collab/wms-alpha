@@ -100,12 +100,15 @@ LIMIT 40;
 
 INSERT INTO wms_inbound_order (order_no, source_order_no, mes_work_order_no, inbound_type, source_system, warehouse_id, supplier_id, customer_id, planned_qty, received_qty, status, sap_material_doc_no, sap_post_status, remark, created_at)
 VALUES
-('IN202606110001', 'MO202606110001', 'MES-MO-202606110001', 'PRODUCTION', 'SAP', 1, NULL, NULL, 10, 0, 'CREATED', NULL, NULL, '鐢熶骇鍏ュ簱婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 1 DAY)),
-('IN202606110002', 'ASN202606110002', 'MES-MO-202606110002', 'STOCKING', 'FULFILLMENT', 2, 1, NULL, 12, 12, 'CLOSED', '5000000002', 'POSTED', '澶囪揣鍏ュ簱婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 2 DAY));
+('IN202606110001', 'MO202606110001', 'MES-MO-202606110001', 'PRODUCTION', 'SAP', 1, NULL, NULL, 10, 0, 'CREATED', NULL, 'NOT_POSTED', '鐢熶骇鍏ュ簱婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 1 DAY)),
+('IN202606110002', 'ASN202606110002', 'MES-MO-202606110002', 'STOCKING', 'FULFILLMENT', 2, 1, NULL, 12, 12, 'CLOSED', '5000000002', 'SUCCESS', '澶囪揣鍏ュ簱婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 2 DAY)),
+('IN202606110003', 'ASN202606110003', 'MES-MO-202606110003', 'STOCKING', 'FULFILLMENT', 2, 1, NULL, 8, 8, 'RECEIVED', '5000000003', 'SUCCESS', '完全收货演示单', DATE_SUB(NOW(), INTERVAL 2 DAY)),
+('IN202606110004', 'ASN202606110004', 'MES-MO-202606110004', 'STOCKING', 'FULFILLMENT', 2, 1, NULL, 6, 6, 'ON_SHELF', '5000000004', 'SUCCESS', '已上架演示单', DATE_SUB(NOW(), INTERVAL 2 DAY)),
+('IN202606110009', 'ASN202606110009', 'MES-MO-202606110009', 'STOCKING', 'FULFILLMENT', 2, 1, NULL, 8, 0, 'CANCELED', NULL, 'NOT_POSTED', '已取消演示单', DATE_SUB(NOW(), INTERVAL 2 DAY));
 
 INSERT INTO wms_inbound_order_detail (order_id, line_no, product_id, planned_qty, received_qty, shelved_qty, batch_no, quality_status)
 SELECT id, 1, IF(order_no = 'IN202606110001', 1, 2), planned_qty, received_qty,
-       IF(status = 'CLOSED', received_qty, 0), CONCAT('BATCH-IN-', order_no), 'QUALIFIED'
+       IF(status IN ('CLOSED', 'ON_SHELF'), received_qty, 0), CONCAT('BATCH-IN-', order_no), 'QUALIFIED'
 FROM wms_inbound_order;
 
 INSERT INTO wms_inbound_order_detail (order_id, line_no, product_id, planned_qty, received_qty, shelved_qty, batch_no, quality_status)
@@ -119,10 +122,16 @@ WHERE order_no = 'IN202606110002';
 
 UPDATE wms_inbound_order_detail
 SET status = CASE
+  WHEN shelved_qty >= planned_qty AND planned_qty > 0 THEN 'ON_SHELF'
   WHEN received_qty = 0 THEN 'CREATED'
   WHEN received_qty >= planned_qty THEN 'RECEIVED'
   ELSE 'PARTIAL_RECEIVED'
 END;
+
+UPDATE wms_inbound_order_detail d
+JOIN wms_inbound_order o ON o.id = d.order_id
+SET d.status = 'CANCELED'
+WHERE o.status = 'CANCELED';
 
 INSERT INTO wms_inbound_order (
   order_no, source_order_no, mes_work_order_no, inbound_type, source_system,
@@ -276,14 +285,14 @@ INSERT INTO wms_outbound_order (
   planned_qty, allocated_qty, picked_qty, review_qty, shipped_qty, status,
   logistics_company, tracking_no, shipper, ship_time, sap_material_doc_no, sap_post_status, trace_post_status, remark, created_at
 ) VALUES
-('OUT202606120001', 'SO202606120001', 'FULFILLMENT', 'SALES', 1, NULL, 1, 5, 0, 0, 0, 0, 'PENDING_ALLOC', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '閿€鍞嚭搴撳畬鏁存紨绀鸿捣鐐?, DATE_SUB(NOW(), INTERVAL 2 HOUR)),
-('OUT202606120002', 'SO202606120002', 'FULFILLMENT', 'SALES', 1, NULL, 2, 4, 4, 0, 0, 0, 'ALLOCATED', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '宸插垎閰嶉攢鍞崟锛屽彲婕旂ず鐢熸垚鎷ｈ揣浠诲姟', DATE_SUB(NOW(), INTERVAL 1 DAY)),
-('OUT202606120003', 'SO202606120003', 'FULFILLMENT', 'SALES', 1, NULL, 3, 3, 3, 3, 3, 0, 'REVIEWED', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '宸插鏍搁攢鍞崟锛屽彲鐩存帴婕旂ず鍙戣揣', DATE_SUB(NOW(), INTERVAL 2 DAY)),
-('OUT202606120004', 'STO202606120004', 'SAP', 'TRANSFER', 1, 2, NULL, 6, 0, 0, 0, 0, 'PENDING_ALLOC', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '闆嗗洟鎬讳粨璋冩嫧鑷充笂娴峰尯鍩熶粨', DATE_SUB(NOW(), INTERVAL 3 HOUR)),
-('OUT202606120005', 'STO202606120005', 'SAP', 'TRANSFER', 1, 2, NULL, 5, 5, 5, 5, 5, 'CALLBACK_SUCCESS', 'SF', 'SF202606120005', 'logistics', DATE_SUB(NOW(), INTERVAL 3 DAY), '4900000005', 'POSTED', 'POSTED', '宸插彂璐ц皟鎷ㄥ巻鍙插崟', DATE_SUB(NOW(), INTERVAL 4 DAY)),
-('OUT202606120006', 'AS202606120006', 'CRM', 'AFTERSALE', 4, NULL, 1, 2, 2, 1, 0, 0, 'PICKING', NULL, NULL, NULL, NULL, NULL, NULL, NULL, '鍞悗鍙戣揣婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 5 HOUR)),
-('OUT202606120007', 'SO202606120007', 'FULFILLMENT', 'SALES', 2, NULL, 4, 2, 2, 2, 2, 2, 'CALLBACK_SUCCESS', 'DHL', 'DHL202606120007', 'logistics', DATE_SUB(NOW(), INTERVAL 4 DAY), '4900000007', 'POSTED', 'POSTED', '鍘嗗彶閿€鍞彂璐ц褰?, DATE_SUB(NOW(), INTERVAL 5 DAY)),
-('OUT202606120008', 'SO202606120008', 'FULFILLMENT', 'SALES', 3, NULL, 5, 1, 1, 1, 1, 1, 'CALLBACK_FAILED', 'SF', 'SF202606120008', 'logistics', DATE_SUB(NOW(), INTERVAL 5 DAY), NULL, 'FAILED', 'POSTED', 'SAP 鎵ｅ噺澶辫触婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 6 DAY));
+('OUT202606120001', 'SO202606120001', 'FULFILLMENT', 'SALES', 1, NULL, 1, 5, 0, 0, 0, 0, 'CREATED', NULL, NULL, NULL, NULL, NULL, 'NOT_POSTED', NULL, '閿€鍞嚭搴撳畬鏁存紨绀鸿捣鐐?, DATE_SUB(NOW(), INTERVAL 2 HOUR)),
+('OUT202606120002', 'SO202606120002', 'FULFILLMENT', 'SALES', 1, NULL, 2, 4, 4, 0, 0, 0, 'ALLOCATED', NULL, NULL, NULL, NULL, NULL, 'NOT_POSTED', NULL, '宸插垎閰嶉攢鍞崟锛屽彲婕旂ず鐢熸垚鎷ｈ揣浠诲姟', DATE_SUB(NOW(), INTERVAL 1 DAY)),
+('OUT202606120003', 'SO202606120003', 'FULFILLMENT', 'SALES', 1, NULL, 3, 3, 3, 3, 3, 0, 'PICKED', NULL, NULL, NULL, NULL, NULL, 'NOT_POSTED', NULL, '宸插鏍搁攢鍞崟锛屽彲鐩存帴婕旂ず鍙戣揣', DATE_SUB(NOW(), INTERVAL 2 DAY)),
+('OUT202606120004', 'STO202606120004', 'SAP', 'TRANSFER', 1, 2, NULL, 6, 0, 0, 0, 0, 'CREATED', NULL, NULL, NULL, NULL, NULL, 'NOT_POSTED', NULL, '闆嗗洟鎬讳粨璋冩嫧鑷充笂娴峰尯鍩熶粨', DATE_SUB(NOW(), INTERVAL 3 HOUR)),
+('OUT202606120005', 'STO202606120005', 'SAP', 'TRANSFER', 1, 2, NULL, 5, 5, 5, 5, 5, 'CLOSED', 'SF', 'SF202606120005', 'logistics', DATE_SUB(NOW(), INTERVAL 3 DAY), '4900000005', 'SUCCESS', 'SUCCESS', '宸插彂璐ц皟鎷ㄥ巻鍙插崟', DATE_SUB(NOW(), INTERVAL 4 DAY)),
+('OUT202606120006', 'AS202606120006', 'CRM', 'AFTERSALE', 4, NULL, 1, 2, 2, 1, 0, 0, 'PARTIAL_PICKED', NULL, NULL, NULL, NULL, NULL, 'NOT_POSTED', NULL, '鍞悗鍙戣揣婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 5 HOUR)),
+('OUT202606120007', 'SO202606120007', 'FULFILLMENT', 'SALES', 2, NULL, 4, 2, 2, 2, 2, 2, 'CLOSED', 'DHL', 'DHL202606120007', 'logistics', DATE_SUB(NOW(), INTERVAL 4 DAY), '4900000007', 'SUCCESS', 'SUCCESS', '鍘嗗彶閿€鍞彂璐ц褰?, DATE_SUB(NOW(), INTERVAL 5 DAY)),
+('OUT202606120008', 'SO202606120008', 'FULFILLMENT', 'SALES', 3, NULL, 5, 1, 1, 1, 1, 1, 'CLOSED', 'SF', 'SF202606120008', 'logistics', DATE_SUB(NOW(), INTERVAL 5 DAY), NULL, 'FAILED', 'SUCCESS', 'SAP 鎵ｅ噺澶辫触婕旂ず鍗?, DATE_SUB(NOW(), INTERVAL 6 DAY));
 
 INSERT INTO wms_outbound_order_detail (order_id, line_no, product_id, planned_qty, allocated_qty, picked_qty, review_qty, shipped_qty, batch_no, status)
 SELECT id, 1,

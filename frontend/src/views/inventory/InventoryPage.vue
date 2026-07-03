@@ -1,7 +1,7 @@
 <template>
   <AlphaListPage
-    title="库存查询"
-    subtitle="多货主、多库区、多状态库存统一查询；支持从查询结果直接发起库存移动"
+    :title="t('inventory.title')"
+    :subtitle="t('inventory.subtitle')"
     :columns="columns"
     :search-fields="searchFields"
     :fetcher="inventoryService.list"
@@ -10,9 +10,9 @@
     scan-enabled
   >
     <template #toolbar="{ selectedRows, reload }">
-      <el-button type="primary" @click="openQuickMove(selectedRows, reload)">库存移动</el-button>
-      <el-button @click="mockToolbarAction('导出')">导出</el-button>
-      <el-button @click="reload()">刷新</el-button>
+      <el-button type="primary" @click="openQuickMove(selectedRows, reload)">{{ t('inventory.move') }}</el-button>
+      <el-button @click="mockToolbarAction(t('common.export'))">{{ t('common.export') }}</el-button>
+      <el-button @click="reload()">{{ t('common.refresh') }}</el-button>
     </template>
   </AlphaListPage>
 
@@ -28,34 +28,34 @@
     <el-form :model="quickMoveForm" label-width="110px" class="quick-move-form">
       <el-row :gutter="14">
         <el-col :span="6">
-          <el-form-item label="移动类型">
+          <el-form-item :label="t('inventory.move')">
             <el-select v-model="quickMoveForm.moveType" style="width: 100%">
               <el-option v-for="item in moveTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
             </el-select>
           </el-form-item>
         </el-col>
         <el-col :span="6">
-          <el-form-item label="货主">
+          <el-form-item :label="t('inventory.owner')">
             <el-input :model-value="`${quickMoveForm.ownerCode} ${quickMoveForm.ownerName}`" readonly />
           </el-form-item>
         </el-col>
         <el-col :span="6">
-          <el-form-item label="仓库">
+          <el-form-item :label="t('inventory.warehouseCode')">
             <el-input :model-value="`${quickMoveForm.warehouseCode} ${quickMoveForm.warehouseName}`" readonly />
           </el-form-item>
         </el-col>
         <el-col :span="6">
-          <el-form-item label="目标库位">
+          <el-form-item :label="t('inventory.locationCode')">
             <el-input v-model="quickMoveForm.toLocationCode" clearable placeholder="不填则默认原库位" />
           </el-form-item>
         </el-col>
         <el-col :span="6">
-          <el-form-item label="目标托盘码">
+          <el-form-item :label="t('inventory.palletCode')">
             <el-input v-model="quickMoveForm.toPalletCode" clearable placeholder="可选" />
           </el-form-item>
         </el-col>
         <el-col :span="6">
-          <el-form-item label="目标箱码">
+          <el-form-item :label="t('inventory.boxCode')">
             <el-input v-model="quickMoveForm.toBoxCode" clearable placeholder="可选" />
           </el-form-item>
         </el-col>
@@ -73,19 +73,19 @@
     </div>
     <el-table v-loading="quickMoveLoading" :data="quickMoveLines" border stripe max-height="420">
       <el-table-column prop="lineNo" label="行号" width="70" />
-      <el-table-column prop="productCode" label="产品编码" width="160" show-overflow-tooltip />
-      <el-table-column prop="productName" label="产品名称" min-width="180" show-overflow-tooltip />
-      <el-table-column prop="snRequired" label="SN 管理" width="95">
+        <el-table-column prop="productCode" :label="t('inventory.productCode')" width="160" show-overflow-tooltip />
+        <el-table-column prop="productName" :label="t('inventory.productName')" min-width="180" show-overflow-tooltip />
+        <el-table-column prop="snRequired" :label="t('inventory.snManaged')" width="95">
         <template #default="{ row }">
-          <el-tag :type="row.snRequired ? 'success' : 'info'" effect="light">{{ row.snRequired ? '是' : '否' }}</el-tag>
+          <el-tag :type="row.snRequired ? 'success' : 'info'" effect="light">{{ row.snRequired ? t('common.yes') : t('common.no') }}</el-tag>
         </template>
       </el-table-column>
       <el-table-column prop="snCode" label="SN" width="170" show-overflow-tooltip />
-      <el-table-column prop="batchNo" label="批次号" width="150" show-overflow-tooltip />
+      <el-table-column prop="batchNo" :label="t('inventory.batch')" width="150" show-overflow-tooltip />
       <el-table-column prop="fromLocationCode" label="来源库位" width="125" />
       <el-table-column prop="fromPalletCode" label="来源托盘码" width="145" show-overflow-tooltip />
       <el-table-column prop="fromBoxCode" label="来源箱码" width="145" show-overflow-tooltip />
-      <el-table-column prop="availableQty" label="可用数量" width="95" />
+      <el-table-column prop="availableQty" :label="t('inventory.availableQty')" width="95" />
       <el-table-column label="本次移动数量" width="150">
         <template #default="{ row }">
           <span v-if="row.snRequired">1</span>
@@ -111,13 +111,15 @@
 </template>
 
 <script setup lang="ts">
-import { reactive, ref } from 'vue'
+import { computed, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import AlphaListPage from '../../components/AlphaListPage.vue'
 import { inventoryMoveService, inventoryService } from '../../api/services'
+import { inventoryStatusLabel, useI18n } from '../../i18n'
 
 type InventoryRow = Record<string, any>
 type ReloadFn = () => Promise<void> | void
+const { t } = useI18n()
 
 const moveTypeOptions = [
   { label: '库位移动', value: 'LOCATION_MOVE' },
@@ -128,41 +130,41 @@ const moveTypeOptions = [
   { label: '综合移动', value: 'MIXED_MOVE' }
 ]
 
-const inventoryStatusOptions = ['QUALIFIED', 'PENDING', 'FROZEN', 'UNQUALIFIED'].map((item) => ({ label: item, value: item }))
+const inventoryStatusOptions = computed(() => ['QUALIFIED', 'PENDING', 'FROZEN', 'UNQUALIFIED'].map((item) => ({ label: inventoryStatusLabel(item), value: item })))
 
-const columns = [
-  { prop: 'warehouse_code', label: '仓库编码', width: 160 },
-  { prop: 'warehouse_name', label: '仓库名称', width: 170 },
-  { prop: 'owner_code', label: '货主', width: 120 },
-  { prop: 'owner_name', label: '货主名称', width: 160 },
-  { prop: 'area_code', label: '库区', width: 120 },
-  { prop: 'location_code', label: '库位', width: 130 },
-  { prop: 'product_code', label: '产品编码', width: 170 },
-  { prop: 'product_name', label: '产品名称', width: 170 },
-  { prop: 'sn_managed', label: 'SN 管理', type: 'boolean', width: 95 },
-  { prop: 'batch_no', label: '批次', width: 170 },
-  { prop: 'pallet_code', label: '托盘码', width: 150 },
-  { prop: 'box_code', label: '箱码', width: 150 },
-  { prop: 'inventory_status', label: '库存状态', type: 'status', width: 110 },
-  { prop: 'total_qty', label: '总库存', width: 90 },
-  { prop: 'available_qty', label: '可用库存', width: 100 },
-  { prop: 'allocated_qty', label: '已分配', width: 90 },
-  { prop: 'frozen_qty', label: '冻结', width: 80 },
-  { prop: 'safety_stock', label: '安全库存', width: 100 },
-  { prop: 'inbound_date', label: '入库日期', width: 120 },
+const columns = computed(() => [
+  { prop: 'warehouse_code', label: t('inventory.warehouseCode'), width: 160 },
+  { prop: 'warehouse_name', label: t('inventory.warehouseName'), width: 170 },
+  { prop: 'owner_code', label: t('inventory.owner'), width: 120 },
+  { prop: 'owner_name', label: t('inventory.ownerName'), width: 160 },
+  { prop: 'area_code', label: t('inventory.area'), width: 120 },
+  { prop: 'location_code', label: t('inventory.location'), width: 130 },
+  { prop: 'product_code', label: t('inventory.productCode'), width: 170 },
+  { prop: 'product_name', label: t('inventory.productName'), width: 170 },
+  { prop: 'sn_managed', label: t('inventory.snManaged'), type: 'boolean', width: 95 },
+  { prop: 'batch_no', label: t('inventory.batch'), width: 170 },
+  { prop: 'pallet_code', label: t('inventory.palletCode'), width: 150 },
+  { prop: 'box_code', label: t('inventory.boxCode'), width: 150 },
+  { prop: 'inventory_status', label: t('inventory.inventoryStatus'), type: 'status', width: 110 },
+  { prop: 'total_qty', label: t('inventory.totalQty'), width: 90 },
+  { prop: 'available_qty', label: t('inventory.availableQty'), width: 100 },
+  { prop: 'allocated_qty', label: t('inventory.allocatedQty'), width: 90 },
+  { prop: 'frozen_qty', label: t('inventory.frozenQty'), width: 80 },
+  { prop: 'safety_stock', label: t('inventory.safetyStock'), width: 100 },
+  { prop: 'inbound_date', label: t('inventory.inboundDate'), width: 120 },
   { prop: 'vmi_flag', label: 'VMI', type: 'boolean', width: 80 }
-]
+])
 
-const searchFields = [
-  { prop: 'warehouseCode', label: '仓库编码' },
-  { prop: 'ownerCode', label: '货主' },
-  { prop: 'locationCode', label: '库位编码' },
-  { prop: 'productCode', label: '产品编码' },
-  { prop: 'batchNo', label: '批次' },
-  { prop: 'palletCode', label: '托盘码' },
-  { prop: 'boxCode', label: '箱码' },
-  { prop: 'inventoryStatus', label: '库存状态', type: 'select', options: inventoryStatusOptions }
-]
+const searchFields = computed(() => [
+  { prop: 'warehouseCode', label: t('inventory.warehouseCode') },
+  { prop: 'ownerCode', label: t('inventory.owner') },
+  { prop: 'locationCode', label: t('inventory.locationCode') },
+  { prop: 'productCode', label: t('inventory.productCode') },
+  { prop: 'batchNo', label: t('inventory.batch') },
+  { prop: 'palletCode', label: t('inventory.palletCode') },
+  { prop: 'boxCode', label: t('inventory.boxCode') },
+  { prop: 'inventoryStatus', label: t('inventory.inventoryStatus'), type: 'select', options: inventoryStatusOptions.value }
+])
 
 const quickMoveVisible = ref(false)
 const quickMoveLoading = ref(false)

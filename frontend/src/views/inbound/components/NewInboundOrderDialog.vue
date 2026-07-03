@@ -1,5 +1,5 @@
 <template>
-  <el-dialog v-model="visible" title="新建预期到货通知单" width="1280px" destroy-on-close>
+  <el-dialog v-model="visible" :title="dialogTitle" width="1280px" destroy-on-close>
     <div v-loading="loading">
       <el-form :model="form" label-width="112px" class="create-form">
         <el-row :gutter="12">
@@ -154,7 +154,12 @@ import { customerService, inboundService, productService, warehouseService } fro
 
 type Row = Record<string, any>
 
-const props = defineProps<{ modelValue: boolean }>()
+const props = defineProps<{
+  modelValue: boolean
+  mode?: 'create' | 'edit'
+  orderId?: number | null
+  initialData?: Row | null
+}>()
 const emit = defineEmits<{
   (event: 'update:modelValue', value: boolean): void
   (event: 'success'): void
@@ -186,6 +191,7 @@ const visible = computed({
   get: () => props.modelValue,
   set: (value: boolean) => emit('update:modelValue', value)
 })
+const dialogTitle = computed(() => props.mode === 'edit' ? '编辑预期到货通知单' : '新建预期到货通知单')
 
 const inboundTypeOptions = [
   { value: 'PRODUCTION', label: '生产入库' },
@@ -231,7 +237,17 @@ async function openDialog() {
       remark: ''
     })
     setOwnerNameAndPlant()
+    if (props.mode === 'edit' && props.initialData?.order) {
+      const order = props.initialData.order
+      form.ownerCode = order.owner_code || order.ownerCode || form.ownerCode
+      form.ownerName = order.owner_name || order.ownerName || form.ownerName
+      form.sapPlant = order.sap_plant || order.sapPlant || form.ownerCode || form.sapPlant
+    }
     await loadProducts()
+    if (props.mode === 'edit' && props.initialData?.order) {
+      fillEditForm(props.initialData)
+      return
+    }
     lines.value = []
     addLine()
   } finally {
@@ -298,6 +314,42 @@ function selectProduct(row: Row) {
   row.sapPlant = row.sapPlant || form.sapPlant
 }
 
+function fillEditForm(data: Row) {
+  const order = data.order || {}
+  Object.assign(form, {
+    inboundType: order.inbound_type || order.inboundType || 'PRODUCTION',
+    sourceSystem: order.source_system || order.sourceSystem || 'MANUAL',
+    sourceOrderNo: order.source_order_no || order.sourceOrderNo || '',
+    ownerCode: order.owner_code || order.ownerCode || form.ownerCode,
+    ownerName: order.owner_name || order.ownerName || '',
+    shipFromCountry: order.ship_from_country || order.shipFromCountry || '',
+    sapPlant: order.sap_plant || order.sapPlant || order.owner_code || form.sapPlant,
+    warehouseCode: order.warehouse_code || order.warehouseCode || form.warehouseCode,
+    planArrivalDate: order.plan_arrival_date || order.planArrivalDate || form.planArrivalDate,
+    remark: order.remark || ''
+  })
+  const details = data.details || data.lines || []
+  lines.value = details.map((line: Row) => {
+    const product = products.value.find((item) => Number(item.productId || item.id) === Number(line.product_id || line.productId)) ||
+      products.value.find((item) => (item.productCode || item.product_code) === (line.product_code || line.productCode))
+    return {
+      uid: Date.now() + Math.random(),
+      lineNo: Number(line.line_no || line.lineNo || 10),
+      productId: line.product_id || line.productId || product?.productId || product?.id || null,
+      productCode: line.product_code || line.productCode || product?.productCode || product?.product_code || '',
+      productName: line.product_name || line.productName || product?.productName || product?.product_name || '',
+      unit: line.unit || product?.unit || '',
+      snRequired: Number(line.sn_required ?? line.snRequired ?? product?.sn_managed ?? 0) === 1 || line.snRequired === true,
+      plannedQty: Number(line.planned_qty || line.plannedQty || 1),
+      sapPlant: line.sap_plant || line.sapPlant || form.sapPlant,
+      sapStorageLocation: line.sap_storage_location || line.sapStorageLocation || '',
+      batchNo: line.batch_no || line.batchNo || '',
+      qualityStatus: line.quality_status || line.qualityStatus || 'QUALIFIED'
+    }
+  })
+  if (!lines.value.length) addLine()
+}
+
 async function submit() {
   if (!form.inboundType || !form.sourceSystem || !form.ownerCode || !form.sapPlant || !form.warehouseCode || !form.planArrivalDate) {
     ElMessage.warning('请补充订单类型、来源系统、货主、SAP 工厂、入库仓库和计划到货日')
@@ -309,7 +361,7 @@ async function submit() {
   }
   submitting.value = true
   try {
-    await inboundService.create({
+    const payload = {
       inboundType: form.inboundType,
       sourceSystem: form.sourceSystem,
       sourceOrderNo: form.sourceOrderNo,
@@ -332,8 +384,14 @@ async function submit() {
         batchNo: line.batchNo,
         qualityStatus: line.qualityStatus
       }))
-    })
-    ElMessage.success('预期到货通知单创建成功')
+    }
+    if (props.mode === 'edit' && props.orderId) {
+      await inboundService.update(Number(props.orderId), { ...payload, operator: 'wh_admin' })
+      ElMessage.success('预期到货通知单已保存')
+    } else {
+      await inboundService.create(payload)
+      ElMessage.success('预期到货通知单创建成功')
+    }
     visible.value = false
     emit('success')
   } finally {

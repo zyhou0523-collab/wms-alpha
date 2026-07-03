@@ -656,9 +656,7 @@ public class InboundService {
   @Transactional
   public Map<String, Object> update(long id, CreateProductionInboundRequest request) {
     Map<String, Object> order = requireOrder(id);
-    if (!List.of("CREATED", "RECEIVING").contains(String.valueOf(order.get("status")))) {
-      throw new IllegalArgumentException("当前状态不允许编辑");
-    }
+    validateInboundEditable(order, "admin");
     Map<String, Object> product = requireProduct(request.productCode());
     Map<String, Object> warehouse = requireWarehouse(request.warehouseCode());
     int qty = request.plannedQty() == null ? ((Number) order.get("planned_qty")).intValue() : request.plannedQty();
@@ -698,9 +696,7 @@ public class InboundService {
       failOperation(orderNo, "RECEIVE_CONFIRM", request.operator(), "请选择本次收货目标库位");
     }
     Map<String, Object> targetLocation = requireReceivingLocation(order, request.locationCode(), orderNo, request.operator());
-    if (!List.of("CREATED", "PARTIAL_RECEIVED", "RECEIVING").contains(String.valueOf(order.get("status")))) {
-      failOperation(orderNo, "RECEIVE_CONFIRM", request.operator(), "当前状态不允许收货");
-    }
+    validateInboundReceivable(order, request.operator());
     List<ReceiveSnRequest.Line> requestLines = request.lines() == null ? List.of() : request.lines();
     if (requestLines.isEmpty() && request.serialNumbers() != null && !request.serialNumbers().isEmpty()) {
       Map<Long, List<String>> grouped = new LinkedHashMap<>();
@@ -868,12 +864,7 @@ public class InboundService {
   public Map<String, Object> cancel(long id, Map<String, Object> body) {
     Map<String, Object> order = requireOrder(id);
     String orderNo = String.valueOf(order.get("order_no"));
-    if (!"CREATED".equals(String.valueOf(order.get("status")))) {
-      failOperation(orderNo, "CANCEL_INBOUND_ORDER", cell(body, "operator"), "只有创建状态的预期到货通知单允许取消");
-    }
-    if (List.of("SUCCESS", "POSTED").contains(String.valueOf(order.get("sap_post_status")))) {
-      failOperation(orderNo, "CANCEL_INBOUND_ORDER", cell(body, "operator"), "已回传 SAP 的入库单不允许直接取消");
-    }
+    validateInboundCancelable(order, cell(body, "operator"));
     int snCount = repo.number("""
         SELECT COUNT(*)
         FROM wms_serial_number
@@ -1087,6 +1078,7 @@ public class InboundService {
           AND sap_post_status IN ('NOT_POSTED', 'FAILED')
         ORDER BY id
         """, params("id", id));
+    validateInboundSapPostable(order, request == null ? null : request.operator(), receipts.size());
     if (receipts.isEmpty()) {
       failOperation(orderNo, "SAP_POSTING", request == null ? null : request.operator(), "当前单据没有待回传或失败的收货批次");
     }
@@ -1626,6 +1618,64 @@ public class InboundService {
     return "校验通过，本次可采集 " + validQty + " 个 SN";
   }
 
+  private void validateInboundEditable(Map<String, Object> order, String operator) {
+    String orderNo = String.valueOf(order.get("order_no"));
+    if (!"CREATED".equals(inboundStatus(order))
+        || intValue(order.get("received_qty"), 0) > 0
+        || intValue(order.get("shelved_qty"), 0) > 0
+        || sapPosted(order)) {
+      failOperation(orderNo, "EDIT_INBOUND_ORDER", operator,
+          "当前状态【" + inboundStatus(order) + "】不允许编辑预期到货通知单，仅创建状态且未采集、未收货、未上架时允许编辑");
+    }
+    int snCount = repo.number("""
+        SELECT COUNT(*)
+        FROM wms_serial_number
+        WHERE inbound_order_no = :orderNo
+          AND status IN ('COLLECTED', 'RECEIVED', 'ON_SHELF')
+        """, params("orderNo", orderNo)).intValue();
+    int receiptCount = repo.number("""
+        SELECT COUNT(*)
+        FROM wms_inbound_receipt
+        WHERE inbound_order_id = :id
+          AND status <> 'CANCELED'
+        """, params("id", order.get("id"))).intValue();
+    if (snCount > 0 || receiptCount > 0) {
+      failOperation(orderNo, "EDIT_INBOUND_ORDER", operator,
+          "当前预期到货通知单已有 SN 采集或收货记录，不允许编辑");
+    }
+  }
+
+  private void validateInboundReceivable(Map<String, Object> order, String operator) {
+    if (!List.of("CREATED", "PARTIAL_RECEIVED", "RECEIVING").contains(inboundStatus(order))) {
+      failOperation(String.valueOf(order.get("order_no")), "RECEIVE_CONFIRM", operator,
+          "当前状态【" + inboundStatus(order) + "】不允许收货，仅创建或部分收货状态允许收货");
+    }
+  }
+
+  private void validateInboundCancelable(Map<String, Object> order, String operator) {
+    if (!"CREATED".equals(inboundStatus(order)) || sapPosted(order)) {
+      failOperation(String.valueOf(order.get("order_no")), "CANCEL_INBOUND_ORDER", operator,
+          "当前状态【" + inboundStatus(order) + "】不允许取消预期到货通知单，仅创建状态且未采集、未收货时允许取消");
+    }
+  }
+
+  private void validateInboundSapPostable(Map<String, Object> order, String operator, int pendingReceiptCount) {
+    String sapStatus = cell(order, "sap_post_status");
+    if (!List.of("PARTIAL_RECEIVED", "RECEIVED", "ON_SHELF", "BOUND").contains(inboundStatus(order))
+        || (pendingReceiptCount <= 0 && !List.of("FAILED", "NOT_POSTED", "").contains(sapStatus))) {
+      failOperation(String.valueOf(order.get("order_no")), "SAP_POSTING", operator,
+          "当前状态【" + inboundStatus(order) + "】且 SAP 状态【" + firstText(sapStatus, "空") + "】不允许回传 SAP，仅已收货且存在未回传或失败收货批次时允许回传");
+    }
+  }
+
+  private boolean sapPosted(Map<String, Object> order) {
+    return List.of("SUCCESS", "POSTED").contains(cell(order, "sap_post_status"));
+  }
+
+  private String inboundStatus(Map<String, Object> order) {
+    return firstText(cell(order, "status"), "空");
+  }
+
   private void refreshInboundHeaderStatus(long orderId) {
     Map<String, Object> current = repo.one("SELECT status FROM wms_inbound_order WHERE id = :orderId", params("orderId", orderId));
     if (current != null && List.of("CANCELED", "CLOSED").contains(String.valueOf(current.get("status")))) {
@@ -2020,7 +2070,7 @@ public class InboundService {
 
   private String inboundStatusName(String value) {
     return switch (value == null ? "" : value) {
-      case "CREATED" -> "待收货";
+      case "CREATED" -> "创建";
       case "PARTIAL_RECEIVED" -> "部分收货";
       case "RECEIVED" -> "完全收货";
       case "ON_SHELF" -> "已上架";

@@ -231,6 +231,7 @@ public class ShippingOrderService {
   @Transactional
   public Map<String, Object> allocateAuto(long id, Map<String, Object> body) {
     Map<String, Object> order = requireOrder(id);
+    validateOutboundAllocatable(order, operator(body));
     List<Map<String, Object>> lines = lines(id);
     int allocated = 0;
     int shortage = 0;
@@ -273,6 +274,7 @@ public class ShippingOrderService {
   @Transactional
   public Map<String, Object> allocateManual(long id, Map<String, Object> body) {
     Map<String, Object> order = requireOrder(id);
+    validateOutboundAllocatable(order, operator(body));
     Map<String, Object> line = requireLine(id, longValue(body.get("lineId"), 0));
     List<String> serials = cleanSerials(body.get("serialNumbers"));
     int allocated = 0;
@@ -298,6 +300,7 @@ public class ShippingOrderService {
   @Transactional
   public Map<String, Object> releaseAllocation(long id, Map<String, Object> body) {
     Map<String, Object> order = requireOrder(id);
+    validateOutboundAllocationCancelable(order, operator(body));
     List<Map<String, Object>> rows = repo.query("""
         SELECT * FROM wms_inventory_allocation
         WHERE outbound_order_id = :id AND allocation_status = 'ALLOCATED'
@@ -331,6 +334,7 @@ public class ShippingOrderService {
   @Transactional
   public Map<String, Object> cancelAllocations(long id, Map<String, Object> body) {
     Map<String, Object> order = requireOrder(id);
+    validateOutboundAllocationCancelable(order, operator(body));
     List<Long> ids = numberList(body.get("allocationIds"));
     if (ids.isEmpty()) throw new IllegalArgumentException("请选择需要取消的分配记录");
     List<Map<String, Object>> failedItems = new ArrayList<>();
@@ -414,6 +418,7 @@ public class ShippingOrderService {
   @Transactional
   public Map<String, Object> generatePicking(long id, Map<String, Object> body) {
     Map<String, Object> order = requireOrder(id);
+    validateOutboundPickable(order, operator(body));
     for (Map<String, Object> line : lines(id)) {
       if (repo.number("""
           SELECT COUNT(*) FROM wms_picking_task
@@ -445,6 +450,7 @@ public class ShippingOrderService {
   @Transactional
   public Map<String, Object> pick(long id, Map<String, Object> body) {
     Map<String, Object> order = requireOrder(id);
+    validateOutboundPickable(order, operator(body));
     Map<String, Object> line = requireLine(id, longValue(body.get("lineId"), 0));
     List<String> serials = cleanSerials(firstText(text(body, "scanCode", "snCode"), ""));
     serials.addAll(cleanSerials(body.get("serialNumbers")));
@@ -466,6 +472,7 @@ public class ShippingOrderService {
   @Transactional
   public Map<String, Object> ship(long id, Map<String, Object> body) {
     Map<String, Object> order = requireOrder(id);
+    validateOutboundShippable(order, operator(body));
     Long lineId = longValue(body.get("lineId"), 0) > 0 ? longValue(body.get("lineId"), 0) : null;
     List<Map<String, Object>> rows = repo.query("""
         SELECT *
@@ -529,6 +536,7 @@ public class ShippingOrderService {
   @Transactional
   public Map<String, Object> cancelPick(long id, long pickId, Map<String, Object> body) {
     Map<String, Object> order = requireOrder(id);
+    validateOutboundPickCancelable(order, operator(body));
     Map<String, Object> record = repo.one("""
         SELECT *
         FROM wms_picking_record
@@ -632,9 +640,7 @@ public class ShippingOrderService {
   @Transactional
   public Map<String, Object> cancelShipment(long id, long shipmentId, Map<String, Object> body) {
     Map<String, Object> order = requireOrder(id);
-    if (List.of("CLOSED", "CANCELED").contains(String.valueOf(order.get("status")))) {
-      throw new IllegalArgumentException("已关闭或已取消的发运订单不允许取消发货");
-    }
+    validateOutboundShipCancelable(order, operator(body));
     Map<String, Object> shipment = repo.one("""
         SELECT *
         FROM wms_shipment_record
@@ -743,9 +749,7 @@ public class ShippingOrderService {
   @Transactional
   public Map<String, Object> cancel(long id, Map<String, Object> body) {
     Map<String, Object> order = requireOrder(id);
-    if (!List.of("CREATED", "PENDING_ALLOC").contains(String.valueOf(order.get("status")))) {
-      throw new IllegalArgumentException("只有创建状态发运订单允许取消");
-    }
+    validateOutboundCancelable(order, operator(body));
     jdbc.update("UPDATE wms_outbound_order SET status = 'CANCELED' WHERE id = :id", params("id", id));
     jdbc.update("UPDATE wms_outbound_order_detail SET status = 'CANCELED' WHERE order_id = :id", params("id", id));
     logStatus(id, String.valueOf(order.get("order_no")), String.valueOf(order.get("status")), "CANCELED", "CANCEL", operator(body), text(body, "reason"));
@@ -758,6 +762,7 @@ public class ShippingOrderService {
     Map<String, Object> order = requireOrder(id);
     refreshOrder(id);
     order = requireOrder(id);
+    validateOutboundClosable(order, operator(body));
     int planned = intValue(order.get("planned_qty"), 0);
     int shipped = intValue(order.get("shipped_qty"), 0);
     if (shipped <= 0) throw new IllegalArgumentException("没有发运记录的订单不允许关闭");
@@ -776,6 +781,7 @@ public class ShippingOrderService {
 
   @Transactional
   public Map<String, Object> postSap(long id, Map<String, Object> body) {
+    validateOutboundSapPostable(requireOrder(id), operator(body));
     sapPost(id, bool(body.get("forceSapFail")), operator(body), null);
     return detail(id);
   }
@@ -840,6 +846,94 @@ public class ShippingOrderService {
         WHERE t.outbound_order_id = :id
         ORDER BY t.id DESC
         """, params("id", id));
+  }
+
+  private void validateOutboundEditable(Map<String, Object> order, String operator) {
+    if (!"CREATED".equals(orderStatus(order))
+        || intValue(order.get("allocated_qty"), 0) > 0
+        || intValue(order.get("picked_qty"), 0) > 0
+        || intValue(order.get("shipped_qty"), 0) > 0
+        || sapPosted(order)) {
+      failOutboundOperation(order, "EDIT_SHIPPING_ORDER", operator,
+          "当前状态【" + orderStatus(order) + "】不允许编辑发运订单，仅创建状态且未产生分配、拣货、发货记录时允许编辑");
+    }
+  }
+
+  private void validateOutboundAllocatable(Map<String, Object> order, String operator) {
+    if (!List.of("CREATED", "PARTIAL_ALLOCATED", "PENDING_ALLOC").contains(orderStatus(order)) || sapPosted(order)) {
+      failOutboundOperation(order, "ALLOCATE", operator,
+          "当前状态【" + orderStatus(order) + "】不允许分配库存，仅创建或部分分配状态允许分配");
+    }
+  }
+
+  private void validateOutboundPickable(Map<String, Object> order, String operator) {
+    if (!List.of("PARTIAL_ALLOCATED", "ALLOCATED", "PARTIAL_PICKED", "PICKING").contains(orderStatus(order))) {
+      failOutboundOperation(order, "PICK", operator,
+          "当前状态【" + orderStatus(order) + "】不允许拣货，仅已分配或部分拣货状态允许拣货");
+    }
+  }
+
+  private void validateOutboundShippable(Map<String, Object> order, String operator) {
+    if (!List.of("PARTIAL_PICKED", "PICKED", "PARTIAL_SHIPPED", "REVIEWED", "PICKING").contains(orderStatus(order))) {
+      failOutboundOperation(order, "SHIP", operator,
+          "当前状态【" + orderStatus(order) + "】不允许发货，仅已拣货或部分发运状态允许发货");
+    }
+  }
+
+  private void validateOutboundClosable(Map<String, Object> order, String operator) {
+    if (!List.of("PARTIAL_SHIPPED", "SHIPPED").contains(orderStatus(order)) || intValue(order.get("shipped_qty"), 0) <= 0) {
+      failOutboundOperation(order, "CLOSE", operator,
+          "当前状态【" + orderStatus(order) + "】不允许关闭发运订单，仅部分发运或完全发运状态允许关闭");
+    }
+  }
+
+  private void validateOutboundCancelable(Map<String, Object> order, String operator) {
+    if (!List.of("CREATED", "PENDING_ALLOC").contains(orderStatus(order)) || sapPosted(order)) {
+      failOutboundOperation(order, "CANCEL", operator,
+          "当前状态【" + orderStatus(order) + "】不允许取消发运订单，仅创建状态允许取消");
+    }
+  }
+
+  private void validateOutboundSapPostable(Map<String, Object> order, String operator) {
+    String sapStatus = text(order, "sap_post_status");
+    if (!"CLOSED".equals(orderStatus(order)) || !List.of("FAILED", "NOT_POSTED", "").contains(sapStatus)) {
+      failOutboundOperation(order, "POST_SAP", operator,
+          "当前状态【" + orderStatus(order) + "】且 SAP 状态【" + firstText(sapStatus, "空") + "】不允许回传 SAP，仅关闭且未回传或回传失败的发运订单允许回传");
+    }
+  }
+
+  private void validateOutboundAllocationCancelable(Map<String, Object> order, String operator) {
+    if (!List.of("PARTIAL_ALLOCATED", "ALLOCATED", "PENDING_ALLOC").contains(orderStatus(order))) {
+      failOutboundOperation(order, "CANCEL_ALLOCATION", operator,
+          "当前状态【" + orderStatus(order) + "】不允许取消分配，仅已分配未拣货阶段允许取消分配");
+    }
+  }
+
+  private void validateOutboundPickCancelable(Map<String, Object> order, String operator) {
+    if (!List.of("PARTIAL_PICKED", "PICKED", "PICKING", "REVIEWING", "REVIEWED").contains(orderStatus(order))) {
+      failOutboundOperation(order, "CANCEL_PICK", operator,
+          "当前状态【" + orderStatus(order) + "】不允许取消拣货，仅部分拣货或完全拣货状态允许取消拣货");
+    }
+  }
+
+  private void validateOutboundShipCancelable(Map<String, Object> order, String operator) {
+    if (!"PARTIAL_SHIPPED".equals(orderStatus(order)) || sapPosted(order)) {
+      failOutboundOperation(order, "CANCEL_SHIPMENT", operator,
+          "当前状态【" + orderStatus(order) + "】不允许取消发货，仅部分发运且 SAP 未成功回传时允许取消发货");
+    }
+  }
+
+  private boolean sapPosted(Map<String, Object> order) {
+    return List.of("SUCCESS", "POSTED").contains(text(order, "sap_post_status"));
+  }
+
+  private String orderStatus(Map<String, Object> order) {
+    return firstText(text(order, "status"), "空");
+  }
+
+  private void failOutboundOperation(Map<String, Object> order, String action, String operator, String message) {
+    repo.operationLog("OUTBOUND", String.valueOf(order.get("order_no")), action, firstText(operator, "admin"), "FAILED", message);
+    throw new IllegalArgumentException(message);
   }
 
   private Map<String, Object> requireOrder(long id) {

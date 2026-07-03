@@ -3,61 +3,62 @@
     <template #header>
       <div class="page-header">
         <div>
-          <div class="page-title">发运订单</div>
-          <div class="muted">销售出库、仓库调拨、STO、售后等出库类型统一在发运订单中管理。</div>
+          <div class="page-title">{{ t('outbound.title') }}</div>
+          <div class="muted">{{ t('outbound.subtitle') }}</div>
         </div>
-        <el-button type="primary" @click="load">刷新</el-button>
+        <el-button type="primary" @click="load">{{ t('common.refresh') }}</el-button>
       </div>
     </template>
 
     <el-form :model="query" inline label-width="104px" class="query-form">
-      <el-form-item label="发运订单编号">
+      <el-form-item :label="t('outbound.shipmentOrderNo')">
         <el-input v-model="query.orderNo" clearable placeholder="SO-OUT-202606110001" />
       </el-form-item>
-      <el-form-item label="订单类型">
-        <el-select v-model="query.orderType" clearable filterable placeholder="全部" style="width: 180px">
+      <el-form-item :label="t('outbound.orderType')">
+        <el-select v-model="query.orderType" clearable filterable :placeholder="t('common.all')" style="width: 180px">
           <el-option v-for="item in orderTypeOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="订单状态">
-        <el-select v-model="query.status" clearable filterable placeholder="全部" style="width: 180px">
+      <el-form-item :label="t('outbound.orderStatus')">
+        <el-select v-model="query.status" clearable filterable :placeholder="t('common.all')" style="width: 180px">
           <el-option v-for="item in statusOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
       </el-form-item>
-      <el-form-item label="仓库编号">
+      <el-form-item :label="t('outbound.warehouseCode')">
         <el-input v-model="query.warehouseCode" clearable placeholder="HZ" />
       </el-form-item>
-      <el-form-item label="货主">
+      <el-form-item :label="t('outbound.owner')">
         <el-input v-model="query.owner" clearable placeholder="货主编码/名称" />
       </el-form-item>
-      <el-form-item label="收货人">
+      <el-form-item :label="t('outbound.consignee')">
         <el-input v-model="query.consigneeCode" clearable placeholder="客户/目标方" />
       </el-form-item>
-      <el-form-item label="关联单号">
+      <el-form-item :label="t('outbound.relatedOrderNo')">
         <el-input v-model="query.relatedOrderNo" clearable placeholder="SO / STO / TR" />
       </el-form-item>
-      <el-form-item label="销售单号">
+      <el-form-item :label="t('outbound.salesOrderNo')">
         <el-input v-model="query.salesOrderNo" clearable />
       </el-form-item>
-      <el-form-item label="回传 SAP">
-        <el-select v-model="query.sapPostStatus" clearable placeholder="全部" style="width: 160px">
-          <el-option label="未回传" value="NOT_POSTED" />
-          <el-option label="成功" value="SUCCESS" />
-          <el-option label="失败" value="FAILED" />
+      <el-form-item :label="t('outbound.sapPost')">
+        <el-select v-model="query.sapPostStatus" clearable :placeholder="t('common.all')" style="width: 160px">
+          <el-option v-for="item in sapStatusOptions" :key="item.value" :label="item.label" :value="item.value" />
         </el-select>
       </el-form-item>
       <el-form-item>
-        <el-button type="primary" @click="search">查询</el-button>
-        <el-button @click="reset">重置</el-button>
+        <el-button type="primary" @click="search">{{ t('common.query') }}</el-button>
+        <el-button @click="reset">{{ t('common.reset') }}</el-button>
       </el-form-item>
     </el-form>
 
     <div class="toolbar">
-      <el-button type="primary" @click="openCreate">新建</el-button>
-      <el-button :disabled="!selectedRows.length" @click="bulkAllocate">分配库存</el-button>
-      <el-button @click="placeholder('导入')">导入</el-button>
-      <el-button @click="placeholder('导出')">导出</el-button>
-      <el-button @click="load">刷新</el-button>
+      <el-button type="primary" @click="openCreate">{{ t('common.add') }}</el-button>
+      <el-button :disabled="!selectedRows.length" @click="bulkAllocate">{{ t('common.allocateInventory') }}</el-button>
+      <el-button type="warning" plain :disabled="!selectedRows.length" @click="retrySelectedSap">{{ t('common.retrySap') }}</el-button>
+      <el-button @click="placeholder(t('common.export'))">{{ t('common.export') }}</el-button>
+      <el-button @click="load">{{ t('common.refresh') }}</el-button>
+      <el-button @click="outboundImportInput?.click()">{{ t('common.importTemplate') }}</el-button>
+      <el-button link type="primary" @click="downloadOutboundImportTemplate">{{ t('common.downloadTemplate') }}</el-button>
+      <input ref="outboundImportInput" class="hidden-file-input" type="file" accept=".csv,.txt" @change="importOutboundRows" />
     </div>
 
     <el-alert
@@ -139,14 +140,16 @@
         <template #default="{ row }"><el-tag :type="sapType(row.sap_post_status)" size="small">{{ sapLabel(row.sap_post_status) }}</el-tag></template>
       </el-table-column>
       <el-table-column prop="sap_post_result" label="回传说明" width="190" show-overflow-tooltip />
-      <el-table-column label="操作" fixed="right" width="310">
+      <el-table-column label="操作" fixed="right" width="390">
         <template #default="{ row }">
-          <el-button link type="primary" @click="openDetail(row)">详情</el-button>
-          <el-button v-if="canAllocate(row)" link type="primary" @click="openAllocation(row)">分配库存</el-button>
-          <el-button v-if="canPick(row)" link type="primary" @click="openPick(row)">拣货</el-button>
-          <el-button v-if="canShip(row)" link type="success" @click="openShip(row)">发货</el-button>
-          <el-button v-if="canClose(row)" link type="warning" @click="closeOrder(row)">关闭</el-button>
-          <el-button v-if="canCancel(row)" link type="danger" @click="cancelOrder(row)">取消</el-button>
+          <el-button link type="primary" @click="openDetail(row)">{{ t('common.details') }}</el-button>
+          <el-button v-if="canEdit(row)" link type="primary" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
+          <el-button v-if="canAllocate(row)" link type="primary" @click="openAllocation(row)">{{ t('common.allocateInventory') }}</el-button>
+          <el-button v-if="canPick(row)" link type="primary" @click="openPick(row)">{{ t('common.pick') }}</el-button>
+          <el-button v-if="canShip(row)" link type="success" @click="openShip(row)">{{ t('common.ship') }}</el-button>
+          <el-button v-if="canPostSap(row)" link type="warning" @click="postSap(row)">{{ t('common.sapPost') }}</el-button>
+          <el-button v-if="canClose(row)" link type="warning" @click="closeOrder(row)">{{ t('common.close') }}</el-button>
+          <el-button v-if="canCancel(row)" link type="danger" @click="cancelOrder(row)">{{ t('common.cancel') }}</el-button>
         </template>
       </el-table-column>
     </el-table>
@@ -165,7 +168,7 @@
     </div>
   </el-card>
 
-  <el-dialog v-model="createVisible" title="新建发运订单" width="980px">
+  <el-dialog v-model="createVisible" :title="createMode === 'edit' ? '编辑发运订单' : '新建发运订单'" width="980px">
     <el-form :model="createForm" label-width="118px">
       <el-row :gutter="12">
         <el-col :span="8">
@@ -175,7 +178,7 @@
             </el-select>
           </el-form-item>
         </el-col>
-        <el-col :span="8"><el-form-item label="发运订单编号"><el-input v-model="createForm.shipmentOrderNo" placeholder="留空自动生成" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item label="发运订单编号"><el-input v-model="createForm.shipmentOrderNo" :disabled="createMode === 'edit'" placeholder="留空自动生成" /></el-form-item></el-col>
         <el-col :span="8"><el-form-item label="关联单号"><el-input v-model="createForm.relatedOrderNo" /></el-form-item></el-col>
         <el-col :span="8"><el-form-item label="仓库编号"><el-input v-model="createForm.warehouseCode" /></el-form-item></el-col>
         <el-col :span="8"><el-form-item label="货主"><el-input v-model="createForm.ownerCode" /></el-form-item></el-col>
@@ -185,6 +188,9 @@
         <el-col :span="8"><el-form-item label="目标仓库"><el-input v-model="createForm.targetWarehouseCode" :disabled="!isCreateTransfer" /></el-form-item></el-col>
         <el-col :span="8"><el-form-item label="预期发货"><el-date-picker v-model="createForm.expectedShipTime" type="datetime" style="width: 100%" /></el-form-item></el-col>
         <el-col :span="8"><el-form-item label="要求交货"><el-date-picker v-model="createForm.requiredDeliveryTime" type="datetime" style="width: 100%" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item label="物流商"><el-input v-model="createForm.carrierName" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item label="物流单号"><el-input v-model="createForm.trackingNo" /></el-form-item></el-col>
+        <el-col :span="8"><el-form-item label="备注"><el-input v-model="createForm.remark" /></el-form-item></el-col>
       </el-row>
       <div class="subsection-title">
         产品明细
@@ -209,8 +215,9 @@
         <el-table-column prop="snRequired" label="SN 管理" width="100">
           <template #default="{ row }"><el-switch v-model="row.snRequired" /></template>
         </el-table-column>
-        <el-table-column label="操作" width="120">
-          <template #default="{ $index }">
+        <el-table-column label="操作" width="150">
+          <template #default="{ row, $index }">
+            <el-button link type="primary" @click="copyCreateLine(row)">复制</el-button>
             <el-button link type="danger" :disabled="createForm.lines.length <= 1" @click="createForm.lines.splice($index, 1)">删除</el-button>
           </template>
         </el-table-column>
@@ -218,7 +225,7 @@
     </el-form>
     <template #footer>
       <el-button @click="createVisible = false">取消</el-button>
-      <el-button type="primary" @click="submitCreate">创建</el-button>
+      <el-button type="primary" @click="submitCreate">{{ createMode === 'edit' ? '保存' : '创建' }}</el-button>
     </template>
   </el-dialog>
 
@@ -229,6 +236,7 @@
         <div class="detail-actionbar-buttons">
           <el-button @click="detailVisible = false">返回</el-button>
           <el-button @click="refreshDetail">刷新</el-button>
+          <el-button v-if="canEdit(detail.order)" type="primary" plain @click="openEditFromDetail">编辑</el-button>
           <el-button v-if="canAllocate(detail.order)" type="primary" @click="openAllocationFromDetail">库存分配</el-button>
           <el-button v-if="canPick(detail.order)" type="primary" @click="openPickFromDetail">拣货</el-button>
           <el-button v-if="canShip(detail.order)" type="success" @click="openShipFromDetail">发货</el-button>
@@ -563,22 +571,45 @@
   </el-dialog>
 
   <el-dialog v-model="shipVisible" title="发运确认" width="760px">
-    <el-alert type="info" show-icon :closable="false" title="只能发运已拣货未发运数量；留空行明细表示整单发运。" />
+    <el-alert type="info" show-icon :closable="false" title="整单发运默认带出全部可发行；按行发运可选择一行或多行并分别维护本次发货数。" />
     <el-form :model="shipForm" label-width="110px" class="dialog-form">
-      <el-form-item label="行明细">
-        <el-select v-model="shipForm.lineId" clearable placeholder="整单发运" style="width: 100%">
-          <el-option v-for="line in shipLines" :key="line.line_id || line.id" :label="`${line.line_no} / ${line.product_code} / 可发 ${remainingShipQty(line)}`" :value="line.line_id || line.id" />
+      <el-form-item label="发运方式">
+        <el-radio-group v-model="shipForm.shipMode" @change="onShipModeChange">
+          <el-radio value="ORDER">整单发运</el-radio>
+          <el-radio value="LINE">按行发运</el-radio>
+        </el-radio-group>
+      </el-form-item>
+      <el-form-item v-if="shipForm.shipMode === 'LINE'" label="选择明细行">
+        <el-select v-model="shipForm.selectedLineIds" multiple collapse-tags collapse-tags-tooltip placeholder="请选择可发运明细行" style="width: 100%" @change="onShipSelectedLinesChange">
+          <el-option v-for="line in shipLines" :key="line.line_id || line.id" :disabled="remainingShipQty(line) <= 0" :label="`${line.line_no} / ${line.product_code} / 可发 ${remainingShipQty(line)}`" :value="line.line_id || line.id" />
         </el-select>
       </el-form-item>
-      <el-form-item label="本次发货数"><el-input-number v-model="shipForm.shipQty" :min="0" controls-position="right" /></el-form-item>
+      <el-table :data="shipForm.lines" size="small" border class="ship-line-table">
+        <el-table-column label="发运" width="70" align="center">
+          <template #default="{ row }">
+            <el-checkbox v-model="row.selected" :disabled="!row.availableShipQty" @change="syncShipQtyFromLines" />
+          </template>
+        </el-table-column>
+        <el-table-column prop="lineNo" label="行号" width="80" />
+        <el-table-column prop="productCode" label="产品编码" min-width="160" show-overflow-tooltip />
+        <el-table-column label="SN" width="70">
+          <template #default="{ row }">{{ row.snRequired ? '是' : '否' }}</template>
+        </el-table-column>
+        <el-table-column prop="orderQty" label="订单数" width="90" />
+        <el-table-column prop="pickedQty" label="已拣" width="90" />
+        <el-table-column prop="shippedQty" label="已发" width="90" />
+        <el-table-column prop="availableShipQty" label="可发" width="90" />
+        <el-table-column label="本次发货" width="150">
+          <template #default="{ row }">
+            <el-input-number v-model="row.thisShipQty" :min="0" :max="row.availableShipQty" :disabled="!row.selected || !row.availableShipQty" controls-position="right" @change="syncShipQtyFromLines" />
+          </template>
+        </el-table-column>
+      </el-table>
+      <el-form-item label="本次发货数"><el-input-number v-model="shipForm.shipQty" :min="0" controls-position="right" disabled /></el-form-item>
       <el-form-item label="物流商"><el-input v-model="shipForm.carrierName" /></el-form-item>
       <el-form-item label="物流单号"><el-input v-model="shipForm.trackingNo" /></el-form-item>
       <el-form-item label="发运人"><el-input v-model="shipForm.shipper" /></el-form-item>
       <el-form-item label="备注"><el-input v-model="shipForm.remark" /></el-form-item>
-      <el-form-item>
-        <el-checkbox v-model="shipForm.forceSapFail">模拟 SAP 失败</el-checkbox>
-        <el-checkbox v-model="shipForm.forceTraceFail">模拟追溯失败</el-checkbox>
-      </el-form-item>
     </el-form>
     <template #footer>
       <el-button @click="shipVisible = false">取消</el-button>
@@ -591,6 +622,21 @@
 import { computed, onMounted, reactive, ref } from 'vue'
 import { ElMessage, ElMessageBox } from 'element-plus'
 import { outboundService } from '../../api/services'
+import { OUTBOUND_ORDER_STATUS_DEFINITIONS, SAP_POST_STATUS_DEFINITIONS } from '../../constants/orderStatus'
+import {
+  canAllocateOutboundOrder,
+  canCancelAllocationOutboundOrder,
+  canCancelOutboundOrder,
+  canCancelPickOutboundOrder,
+  canCancelShipOutboundOrder,
+  canCloseOutboundOrder,
+  canEditOutboundOrder,
+  canPickOutboundOrder,
+  canPostSapOutboundOrder,
+  canShipOutboundOrder
+} from '../../constants/orderActionPermissions'
+import { sapStatusLabel as i18nSapStatusLabel, statusLabel as i18nStatusLabel, useI18n } from '../../i18n'
+import { downloadTextFile, importResultHtml, parseSectionedCsv, readTextFile } from '../../utils/fileTransfer'
 
 type Row = Record<string, any>
 
@@ -601,10 +647,13 @@ const query = reactive<Row>({ pageNum: 1, pageSize: 10 })
 const selectedRows = ref<Row[]>([])
 
 const createVisible = ref(false)
+const createMode = ref<'create' | 'edit'>('create')
+const editingOrderId = ref<number | null>(null)
 const detailVisible = ref(false)
 const allocationVisible = ref(false)
 const pickVisible = ref(false)
 const shipVisible = ref(false)
+const outboundImportInput = ref<HTMLInputElement>()
 
 const detail = ref<Row>({})
 const allocationData = ref<Row>({})
@@ -618,10 +667,11 @@ const selectedShipments = ref<Row[]>([])
 const createForm = reactive<Row>({ lines: [] })
 const manualForm = reactive<Row>({ quantity: 0 })
 const pickForm = reactive<Row>({ pickMode: 'ALLOCATED', quantity: 1 })
-const shipForm = reactive<Row>({ shipQty: 0 })
+const shipForm = reactive<Row>({ shipMode: 'ORDER', selectedLineIds: [], shipQty: 0, lines: [] })
 const pickLines = ref<Row[]>([])
 const pickAllocations = ref<Row[]>([])
 const shipLines = ref<Row[]>([])
+const { t } = useI18n()
 
 const orderTypeOptions = [
   ['SALES_OUTBOUND', '销售出库'],
@@ -635,17 +685,14 @@ const orderTypeOptions = [
   ['OTHER_OUTBOUND', '其他出库']
 ].map(([value, label]) => ({ value, label }))
 
-const statusOptions = [
-  ['CREATED', '创建'],
-  ['PARTIAL_ALLOCATED', '部分分配'],
-  ['ALLOCATED', '完全分配'],
-  ['PARTIAL_PICKED', '部分拣货'],
-  ['PICKED', '完全拣货'],
-  ['PARTIAL_SHIPPED', '部分发运'],
-  ['SHIPPED', '完全发运'],
-  ['CLOSED', '订单关闭'],
-  ['CANCELED', '订单取消']
-].map(([value, label]) => ({ value, label }))
+const statusOptions = computed(() => OUTBOUND_ORDER_STATUS_DEFINITIONS.map((item) => ({
+  value: item.value,
+  label: statusOptionLabel(i18nStatusLabel(item.value), item.legacy)
+})))
+const sapStatusOptions = computed(() => SAP_POST_STATUS_DEFINITIONS.map((item) => ({
+  value: item.value,
+  label: statusOptionLabel(i18nSapStatusLabel(item.value), item.legacy)
+})))
 
 const isCreateTransfer = computed(() => ['WAREHOUSE_TRANSFER', 'STO_OUTBOUND'].includes(createForm.orderType))
 const allocationLines = computed(() => allocationData.value.lines || allocationData.value.details || [])
@@ -688,6 +735,8 @@ function reset() {
 }
 
 function openCreate() {
+  createMode.value = 'create'
+  editingOrderId.value = null
   Object.assign(createForm, {
     shipmentOrderNo: '',
     orderType: 'SALES_OUTBOUND',
@@ -701,6 +750,9 @@ function openCreate() {
     targetWarehouseCode: 'NB',
     expectedShipTime: new Date(),
     requiredDeliveryTime: new Date(Date.now() + 86400000),
+    carrierName: '',
+    trackingNo: '',
+    remark: '',
     lines: [
       { lineNo: 10, productCode: 'GT3-10KD1R11004', orderQty: 3, sapPlant: '3060', unit: 'PCS', snRequired: true },
       { lineNo: 20, productCode: 'HXEDE081R10002', orderQty: 5, sapPlant: '3060', unit: 'PCS', snRequired: false }
@@ -724,11 +776,62 @@ function addCreateLine() {
   createForm.lines.push({ lineNo: (createForm.lines.length + 1) * 10, productCode: 'GT3-10KD1R11004', orderQty: 1, sapPlant: '3060', unit: 'PCS', snRequired: true })
 }
 
+function copyCreateLine(row: Row) {
+  createForm.lines.push({ ...row, lineNo: (createForm.lines.length + 1) * 10 })
+}
+
 async function submitCreate() {
-  await outboundService.create({ ...createForm })
-  ElMessage.success('发运订单已创建')
+  if (createMode.value === 'edit' && editingOrderId.value) {
+    await outboundService.update(editingOrderId.value, { ...createForm, operator: 'planner' })
+    ElMessage.success('发运订单已保存')
+  } else {
+    await outboundService.create({ ...createForm })
+    ElMessage.success('发运订单已创建')
+  }
   createVisible.value = false
-  await load()
+  await refreshAfterOrderAction(editingOrderId.value || undefined)
+}
+
+async function openEdit(row: Row) {
+  const data = await outboundService.detail(Number(row.id))
+  if (!canEdit(data.order || row)) {
+    ElMessage.warning('仅创建态且未分配、未拣货、未发货、未回传 SAP 成功的发运订单允许编辑')
+    return
+  }
+  const order = data.order || row
+  createMode.value = 'edit'
+  editingOrderId.value = Number(order.id)
+  Object.assign(createForm, {
+    shipmentOrderNo: order.shipment_order_no || order.order_no,
+    orderType: order.order_type || order.outbound_type || 'SALES_OUTBOUND',
+    sourceSystem: order.source_system || 'FULFILLMENT',
+    relatedOrderNo: order.related_order_no || order.source_order_no || '',
+    salesOrderNo: order.sales_order_no || '',
+    warehouseCode: order.warehouse_code || 'HZ',
+    ownerCode: order.owner_code || '3060',
+    ownerName: order.owner_name || '',
+    consigneeCode: order.consignee_code || order.customer_code || '',
+    targetWarehouseCode: order.target_warehouse_code || '',
+    expectedShipTime: order.expected_ship_time || '',
+    requiredDeliveryTime: order.required_delivery_time || '',
+    carrierName: order.carrier_name || order.logistics_company || '',
+    trackingNo: order.tracking_no || '',
+    remark: order.remark || '',
+    lines: (data.lines || data.details || []).map((line: Row) => ({
+      lineNo: Number(line.line_no || line.lineNo || 0),
+      productCode: line.product_code || '',
+      orderQty: Number(line.order_qty || line.planned_qty || 1),
+      sapPlant: line.sap_plant || order.owner_code || '3060',
+      unit: line.unit || 'PCS',
+      snRequired: Number(line.sn_required || line.sn_managed || 0) === 1
+    }))
+  })
+  if (!createForm.lines.length) addCreateLine()
+  createVisible.value = true
+}
+
+async function openEditFromDetail() {
+  if (detail.value.order) await openEdit(detail.value.order)
 }
 
 async function openDetail(row: Row) {
@@ -863,21 +966,30 @@ async function openShip(row: Row, line?: Row) {
   currentOrder.value = row
   const data = await outboundService.detail(Number(row.id))
   shipLines.value = data.lines || data.details || []
-  shipForm.lineId = line ? (line.line_id || line.id) : undefined
-  shipForm.shipQty = 0
+  const selectedLineId = line ? Number(line.line_id || line.id) : 0
+  shipForm.shipMode = selectedLineId ? 'LINE' : 'ORDER'
+  shipForm.selectedLineIds = selectedLineId ? [selectedLineId] : []
+  shipForm.lines = buildShipLineForms(shipLines.value, selectedLineId ? [selectedLineId] : undefined)
+  syncShipQtyFromLines()
   shipForm.carrierName = row.carrier_name || 'SF'
   shipForm.trackingNo = row.tracking_no || `SF${Date.now()}`
   shipForm.shipper = 'logistics'
   shipForm.remark = ''
-  shipForm.forceSapFail = false
-  shipForm.forceTraceFail = false
   shipVisible.value = true
 }
 
 async function submitShip() {
   if (!currentOrder.value) return
-  await outboundService.ship(Number(currentOrder.value.id), { ...shipForm, operator: 'logistics' })
-  ElMessage.success('发运确认完成，已触发追溯与 SAP Mock')
+  syncShipQtyFromLines()
+  const lineShipments = (shipForm.lines || [])
+    .filter((line: Row) => line.selected && Number(line.thisShipQty || 0) > 0)
+    .map((line: Row) => ({ lineId: line.lineId, shipQty: Number(line.thisShipQty || 0) }))
+  if (!lineShipments.length) {
+    ElMessage.warning('请选择至少一行可发运明细')
+    return
+  }
+  await outboundService.ship(Number(currentOrder.value.id), { ...shipForm, lineShipments, operator: 'logistics' })
+  ElMessage.success('发运确认完成，SAP 将在关闭订单时回传')
   shipVisible.value = false
   await refreshAfterOrderAction(Number(currentOrder.value.id))
 }
@@ -1002,10 +1114,40 @@ async function postSap(row: Row) {
   await load()
 }
 
+async function retrySelectedSap() {
+  const rows = selectedRows.value.filter(canPostSap)
+  if (!rows.length) {
+    ElMessage.warning('请选择已关闭且 SAP 未回传或回传失败的发运订单')
+    return
+  }
+  const result = await outboundService.retrySapPost({ orderIds: rows.map((row) => Number(row.id)) })
+  showBatchResult('重传 SAP', result)
+  await load()
+}
+
+async function downloadOutboundImportTemplate() {
+  downloadTextFile(await outboundService.importTemplate())
+}
+
+async function importOutboundRows(event: Event) {
+  const input = event.target as HTMLInputElement
+  const file = input.files?.[0]
+  if (!file) return
+  try {
+    const data = parseSectionedCsv(await readTextFile(file))
+    const result = await outboundService.importRows(data.headers, data.lines)
+    await ElMessageBox.alert(importResultHtml(result), '发运订单导入结果', { dangerouslyUseHTMLString: true, confirmButtonText: '知道了' })
+    await load()
+  } finally {
+    input.value = ''
+  }
+}
+
 async function closeOrder(row: Row) {
   await ElMessageBox.confirm('关闭部分发运订单时会生成剩余数量分单，是否继续？', '关闭发运订单', { type: 'warning' })
-  await outboundService.close(Number(row.id), { operator: 'manager' })
-  ElMessage.success('订单已关闭')
+  const result = await outboundService.close(Number(row.id), { operator: 'manager' })
+  if (result?.order?.sap_post_status === 'FAILED') ElMessage.warning('订单已关闭，SAP 回传失败，可在列表重传')
+  else ElMessage.success('订单已关闭，SAP 回传已触发')
   await load()
 }
 
@@ -1025,51 +1167,52 @@ function selectableCandidate(row: Row) {
 }
 
 function canAllocate(row: Row) {
-  return ['CREATED', 'PARTIAL_ALLOCATED', 'PENDING_ALLOC', 'ALLOCATION_EXCEPTION'].includes(row.status)
+  return canAllocateOutboundOrder(row)
 }
 
 function canPick(row: Row, line?: Row) {
-  const source = line || row
-  return !['CANCELED', 'CLOSED', 'SHIPPED', 'CALLBACK_SUCCESS'].includes(row.status) && Number(source.picked_qty || 0) < Number(source.order_qty || source.planned_qty || row.planned_qty || 0)
+  return canPickOutboundOrder(row, line)
 }
 
 function canShip(row: Row, line?: Row) {
-  const source = line || row
-  return Number(source.picked_qty || 0) > Number(source.shipped_qty || 0) && !['CANCELED', 'CLOSED'].includes(row.status)
+  return canShipOutboundOrder(row, line)
+}
+
+function canEdit(row: Row) {
+  return canEditOutboundOrder(row)
 }
 
 function canCancelPick(row: Row) {
-  return Number(row.picked_qty || 0) > Number(row.shipped_qty || 0) && !['CANCELED', 'CLOSED'].includes(row.status)
+  return canCancelPickOutboundOrder(row)
 }
 
 function canCancelShipment(row: Row) {
-  return Number(row.shipped_qty || 0) > 0 && !['CANCELED', 'CLOSED'].includes(row.status) && !['SUCCESS', 'POSTED'].includes(row.sap_post_status)
+  return canCancelShipOutboundOrder(row)
 }
 
 function canCancelAllocationRecord(row: Row) {
-  return row.allocation_status === 'ALLOCATED'
+  if (['CLOSED', 'CANCELED'].includes(detail.value.order?.status)) return false
+  return canCancelAllocationOutboundOrder(row)
 }
 
 function canCancelPickRecord(row: Row) {
-  return !['CANCELED', 'SHIPPED'].includes(row.result || row.status || '')
-    && !['SHIPPED'].includes(row.allocation_status || '')
-    && !row.shipment_no
+  return canCancelPickOutboundOrder({ ...row, order_status: detail.value.order?.status })
 }
 
 function canCancelShipmentRecord(row: Row) {
-  return !['CANCELED'].includes(row.shipment_status || row.status || '') && !['SUCCESS', 'POSTED'].includes(row.sap_post_status)
+  return canCancelShipOutboundOrder({ ...row, status: detail.value.order?.status || row.order_status || row.status })
 }
 
 function canPostSap(row: Row) {
-  return Number(row.shipped_qty || 0) > 0 && ['FAILED', 'NOT_POSTED', '', undefined].includes(row.sap_post_status)
+  return canPostSapOutboundOrder(row)
 }
 
 function canClose(row: Row) {
-  return Number(row.shipped_qty || 0) > 0 && !['CLOSED', 'CANCELED'].includes(row.status)
+  return canCloseOutboundOrder(row)
 }
 
 function canCancel(row: Row) {
-  return ['CREATED', 'PENDING_ALLOC'].includes(row.status)
+  return canCancelOutboundOrder(row)
 }
 
 function remainingPickQty(line: Row) {
@@ -1078,6 +1221,53 @@ function remainingPickQty(line: Row) {
 
 function remainingShipQty(line: Row) {
   return Math.max(Number(line.picked_qty || 0) - Number(line.shipped_qty || 0), 0)
+}
+
+function buildShipLineForms(lines: Row[], selectedLineIds?: number[]) {
+  const selectedIds = new Set((selectedLineIds || []).map(Number))
+  return lines.map((line) => {
+    const lineId = Number(line.line_id || line.id)
+    const availableShipQty = remainingShipQty(line)
+    const selected = selectedIds.size ? selectedIds.has(lineId) && availableShipQty > 0 : availableShipQty > 0
+    return {
+      lineId,
+      lineNo: line.line_no,
+      productCode: line.product_code,
+      productName: line.product_name || line.product_description,
+      snRequired: Number(line.sn_required || line.sn_managed || 0) === 1,
+      orderQty: Number(line.order_qty || line.planned_qty || 0),
+      pickedQty: Number(line.picked_qty || 0),
+      shippedQty: Number(line.shipped_qty || 0),
+      availableShipQty,
+      thisShipQty: selected ? availableShipQty : 0,
+      selected
+    }
+  })
+}
+
+function syncShipQtyFromLines() {
+  shipForm.shipQty = (shipForm.lines || [])
+    .filter((line: Row) => line.selected)
+    .reduce((total: number, line: Row) => total + Number(line.thisShipQty || 0), 0)
+}
+
+function onShipLineChange() {
+  rebuildShipFormLines()
+}
+
+function onShipModeChange() {
+  if (shipForm.shipMode === 'ORDER') shipForm.selectedLineIds = []
+  rebuildShipFormLines()
+}
+
+function onShipSelectedLinesChange() {
+  rebuildShipFormLines()
+}
+
+function rebuildShipFormLines() {
+  const selectedIds = shipForm.shipMode === 'LINE' ? (shipForm.selectedLineIds || []).map(Number) : undefined
+  shipForm.lines = buildShipLineForms(shipLines.value, selectedIds)
+  syncShipQtyFromLines()
 }
 
 function pendingAllocateQty(line: Row) {
@@ -1167,26 +1357,23 @@ function orderTypeLabel(value: string) {
 }
 
 function statusLabel(status: string) {
-  const alias: Record<string, string> = {
-    PENDING_ALLOC: '创建',
-    ALLOCATION_EXCEPTION: '分配异常',
-    REVIEWED: '已复核',
-    CALLBACK_SUCCESS: '回传成功',
-    CALLBACK_FAILED: '回传失败'
-  }
-  return statusOptions.find((item) => item.value === status)?.label || alias[status] || status || '-'
+  return i18nStatusLabel(status, status || '-')
 }
 
 function statusType(status: string) {
   if (['SHIPPED', 'CLOSED', 'CALLBACK_SUCCESS'].includes(status)) return 'success'
   if (['CANCELED', 'CALLBACK_FAILED', 'ALLOCATION_EXCEPTION'].includes(status)) return 'danger'
-  if (['PARTIAL_ALLOCATED', 'PARTIAL_PICKED', 'PARTIAL_SHIPPED', 'PENDING_ALLOC'].includes(status)) return 'warning'
-  if (['ALLOCATED', 'PICKED'].includes(status)) return 'primary'
+  if (['PARTIAL_ALLOCATED', 'PARTIAL_PICKED', 'PARTIAL_SHIPPED', 'PENDING_ALLOC', 'PICKING', 'REVIEWING'].includes(status)) return 'warning'
+  if (['ALLOCATED', 'PICKED', 'REVIEWED'].includes(status)) return 'primary'
   return 'info'
 }
 
+function statusOptionLabel(label: string, legacy?: boolean) {
+  return legacy ? t('statusMeta.compatibleLabel', { label }) : label
+}
+
 function sapLabel(status: string) {
-  return { NOT_POSTED: '未回传', SUCCESS: '成功', POSTED: '成功', FAILED: '失败' }[status] || status || '未回传'
+  return i18nSapStatusLabel(status || 'NOT_POSTED')
 }
 
 function sapType(status: string) {
@@ -1221,6 +1408,10 @@ function sapType(status: string) {
 
 .action-strip {
   margin-top: 12px;
+}
+
+.hidden-file-input {
+  display: none;
 }
 
 .detail-actionbar {
@@ -1259,6 +1450,14 @@ function sapType(status: string) {
 
 .pick-list-panel {
   margin: 12px 0 16px;
+}
+
+.ship-line-table {
+  margin-bottom: 16px;
+}
+
+.ship-line-table :deep(.el-input-number) {
+  width: 128px;
 }
 
 .list-alert {
