@@ -888,6 +888,44 @@ public class InboundService {
   }
 
   @Transactional
+  public Map<String, Object> close(long id, Map<String, Object> body) {
+    Map<String, Object> order = requireOrder(id);
+    String orderNo = String.valueOf(order.get("order_no"));
+    String operator = cell(body, "operator");
+    validateInboundClosable(order, operator);
+    boolean generateSplitOrder = booleanValue(body.get("generateSplitOrder"));
+    List<Map<String, Object>> lines = inboundLinesForClose(id);
+    int remainingQty = remainingInboundQty(lines);
+    if ("PARTIAL_RECEIVED".equals(inboundStatus(order)) && generateSplitOrder && remainingQty <= 0) {
+      failOperation(orderNo, "CLOSE_INBOUND_ORDER", operator, "部分收货关闭生成分单时必须存在未收货数量");
+    }
+    String splitOrderNo = "";
+    if ("PARTIAL_RECEIVED".equals(inboundStatus(order)) && generateSplitOrder) {
+      splitOrderNo = createInboundSplitOrder(order, lines, operator);
+    }
+    jdbc.update("""
+        UPDATE wms_inbound_order
+        SET status = 'CLOSED',
+            updated_by = :operator
+        WHERE id = :id
+        """, params("id", id, "operator", operator(operator)));
+    jdbc.update("""
+        UPDATE wms_inbound_order_detail
+        SET status = 'CLOSED'
+        WHERE order_id = :id
+        """, params("id", id));
+    repo.operationLog("INBOUND", orderNo, "CLOSE_INBOUND_ORDER", operator(operator), "SUCCESS",
+        StringUtils.hasText(splitOrderNo)
+            ? "部分收货关闭，生成剩余分单 " + splitOrderNo
+            : ("PARTIAL_RECEIVED".equals(inboundStatus(order)) ? "部分收货关闭，不生成分单" : "完全收货关闭"));
+    Map<String, Object> result = detail(id);
+    result.put("success", true);
+    result.put("message", "关闭成功");
+    result.put("splitOrderNo", splitOrderNo);
+    return result;
+  }
+
+  @Transactional
   public Map<String, Object> cancelReceipt(long id, long receiptId, Map<String, Object> body) {
     Map<String, Object> order = requireOrder(id);
     String orderNo = String.valueOf(order.get("order_no"));
@@ -1659,9 +1697,27 @@ public class InboundService {
     }
   }
 
+  private void validateInboundClosable(Map<String, Object> order, String operator) {
+    String orderNo = String.valueOf(order.get("order_no"));
+    String status = inboundStatus(order);
+    if ("CREATED".equals(status)) {
+      failOperation(orderNo, "CLOSE_INBOUND_ORDER", operator, "创建状态单据请使用取消操作");
+    }
+    if ("CLOSED".equals(status)) {
+      failOperation(orderNo, "CLOSE_INBOUND_ORDER", operator, "当前单据已关闭，不允许重复关闭");
+    }
+    if ("CANCELED".equals(status)) {
+      failOperation(orderNo, "CLOSE_INBOUND_ORDER", operator, "当前单据已取消，不允许关闭");
+    }
+    if (!List.of("PARTIAL_RECEIVED", "RECEIVED").contains(status)) {
+      failOperation(orderNo, "CLOSE_INBOUND_ORDER", operator,
+          "当前状态【" + status + "】不允许关闭预期到货通知单，仅部分收货或完全收货状态允许关闭");
+    }
+  }
+
   private void validateInboundSapPostable(Map<String, Object> order, String operator, int pendingReceiptCount) {
     String sapStatus = cell(order, "sap_post_status");
-    if (!List.of("PARTIAL_RECEIVED", "RECEIVED", "ON_SHELF", "BOUND").contains(inboundStatus(order))
+    if (!List.of("PARTIAL_RECEIVED", "RECEIVED", "ON_SHELF", "BOUND", "CLOSED").contains(inboundStatus(order))
         || (pendingReceiptCount <= 0 && !List.of("FAILED", "NOT_POSTED", "").contains(sapStatus))) {
       failOperation(String.valueOf(order.get("order_no")), "SAP_POSTING", operator,
           "当前状态【" + inboundStatus(order) + "】且 SAP 状态【" + firstText(sapStatus, "空") + "】不允许回传 SAP，仅已收货且存在未回传或失败收货批次时允许回传");
@@ -1714,6 +1770,106 @@ public class InboundService {
         "receivedQty", receivedQty,
         "status", status
     ));
+  }
+
+  private List<Map<String, Object>> inboundLinesForClose(long id) {
+    return repo.query("""
+        SELECT d.*, o.order_no, o.warehouse_id, o.owner_code AS order_owner_code, o.sap_plant AS order_sap_plant,
+               p.product_code, p.product_name
+        FROM wms_inbound_order_detail d
+        JOIN wms_inbound_order o ON o.id = d.order_id
+        JOIN md_product p ON p.id = d.product_id
+        WHERE d.order_id = :id
+        ORDER BY d.line_no
+        """, params("id", id));
+  }
+
+  private int remainingInboundQty(List<Map<String, Object>> lines) {
+    int remainingQty = 0;
+    for (Map<String, Object> line : lines) {
+      remainingQty += Math.max(intValue(line.get("planned_qty"), 0) - intValue(line.get("received_qty"), 0), 0);
+    }
+    return remainingQty;
+  }
+
+  private String createInboundSplitOrder(Map<String, Object> order, List<Map<String, Object>> lines, String operator) {
+    String orderNo = String.valueOf(order.get("order_no"));
+    List<Map<String, Object>> remainingLines = new ArrayList<>();
+    for (Map<String, Object> line : lines) {
+      int remainingQty = Math.max(intValue(line.get("planned_qty"), 0) - intValue(line.get("received_qty"), 0), 0);
+      if (remainingQty <= 0) {
+        continue;
+      }
+      if (line.get("product_id") == null
+          || !StringUtils.hasText(cell(line, "product_code"))
+          || !StringUtils.hasText(firstText(cell(line, "owner_code"), cell(order, "owner_code")))
+          || order.get("warehouse_id") == null
+          || !StringUtils.hasText(firstText(cell(line, "sap_plant"), cell(order, "sap_plant")))
+          || !StringUtils.hasText(cell(line, "sap_storage_location"))) {
+        failOperation(orderNo, "CLOSE_INBOUND_ORDER", operator,
+            "生成分单失败：未收货明细产品、货主、仓库、SAP 工厂或 SAP 库存地点不完整");
+      }
+      Map<String, Object> splitLine = new HashMap<>(line);
+      splitLine.put("remaining_qty", remainingQty);
+      remainingLines.add(splitLine);
+    }
+    if (remainingLines.isEmpty()) {
+      failOperation(orderNo, "CLOSE_INBOUND_ORDER", operator, "生成分单失败：没有未收货数量大于 0 的明细");
+    }
+    int splitIndex = repo.number("""
+        SELECT COUNT(*) + 1
+        FROM wms_inbound_order
+        WHERE split_from_order_no = :orderNo
+        """, params("orderNo", orderNo)).intValue();
+    String splitOrderNo = orderNo + "-S" + String.format("%02d", splitIndex);
+    jdbc.update("""
+        INSERT INTO wms_inbound_order (
+          order_no, source_order_no, mes_work_order_no, inbound_type, source_system,
+          warehouse_id, supplier_id, customer_id, owner_code, owner_name, ship_from_country, sap_plant,
+          related_order_no, planned_qty, received_qty, status, sap_post_status, sap_post_result,
+          plan_arrival_date, remark, created_by, updated_by, split_from_order_no, split_flag
+        )
+        SELECT :splitOrderNo, source_order_no, mes_work_order_no, inbound_type, source_system,
+               warehouse_id, supplier_id, customer_id, owner_code, owner_name, ship_from_country, sap_plant,
+               related_order_no, 0, 0, 'CREATED', 'NOT_POSTED', '',
+               plan_arrival_date, :remark, :operator, :operator, order_no, 1
+        FROM wms_inbound_order
+        WHERE id = :id
+        """, params(
+        "splitOrderNo", splitOrderNo,
+        "id", order.get("id"),
+        "remark", "由部分收货关单生成，来源单号 " + orderNo,
+        "operator", operator(operator)
+    ));
+    long splitOrderId = repo.number("SELECT id FROM wms_inbound_order WHERE order_no = :orderNo", params("orderNo", splitOrderNo)).longValue();
+    for (Map<String, Object> line : remainingLines) {
+      jdbc.update("""
+          INSERT INTO wms_inbound_order_detail (
+            order_id, line_no, product_id, planned_qty, received_qty, shelved_qty,
+            sap_plant, sap_storage_location, sn_required, owner_code,
+            batch_no, quality_status, status
+          ) VALUES (
+            :orderId, :lineNo, :productId, :plannedQty, 0, 0,
+            :sapPlant, :sapStorageLocation, :snRequired, :ownerCode,
+            :batchNo, :qualityStatus, 'CREATED'
+          )
+          """, params(
+          "orderId", splitOrderId,
+          "lineNo", line.get("line_no"),
+          "productId", line.get("product_id"),
+          "plannedQty", line.get("remaining_qty"),
+          "sapPlant", firstText(cell(line, "sap_plant"), cell(order, "sap_plant")),
+          "sapStorageLocation", cell(line, "sap_storage_location"),
+          "snRequired", intValue(line.get("sn_required"), 0),
+          "ownerCode", firstText(cell(line, "owner_code"), cell(order, "owner_code")),
+          "batchNo", firstText(cell(line, "batch_no"), "BATCH-" + splitOrderNo + "-" + line.get("line_no")),
+          "qualityStatus", firstText(cell(line, "quality_status"), "QUALIFIED")
+      ));
+    }
+    refreshInboundHeaderStatus(splitOrderId);
+    repo.operationLog("INBOUND", splitOrderNo, "SPLIT_FROM_PARTIAL_RECEIPT", operator(operator), "SUCCESS",
+        "由 " + orderNo + " 部分收货关闭生成");
+    return splitOrderNo;
   }
 
   private Map<String, Object> requireOrder(long id) {
@@ -2099,6 +2255,16 @@ public class InboundService {
 
   private String firstText(String value, String fallback) {
     return StringUtils.hasText(value) ? value : fallback;
+  }
+
+  private boolean booleanValue(Object value) {
+    if (value instanceof Boolean bool) {
+      return bool;
+    }
+    if (value instanceof Number number) {
+      return number.intValue() == 1;
+    }
+    return "true".equalsIgnoreCase(String.valueOf(value)) || "1".equals(String.valueOf(value));
   }
 
   private String nullToEmpty(Object value) {

@@ -150,13 +150,14 @@
       <el-table-column prop="created_by" label="创建人" width="100" />
       <el-table-column prop="updated_at" label="更新时间" width="170" show-overflow-tooltip />
       <el-table-column prop="updated_by" label="更新人" width="100" />
-      <el-table-column label="操作" fixed="right" width="360">
+      <el-table-column label="操作" fixed="right" width="420">
         <template #default="{ row }">
           <el-button link type="primary" @click="openDetail(row)">{{ t('common.view') }}</el-button>
           <el-button v-if="canEdit(row)" link type="primary" @click="openEdit(row)">{{ t('common.edit') }}</el-button>
           <el-button v-if="canCollectSn(row)" link type="success" @click="openSnCollect(row)">{{ t('common.collectSn') }}</el-button>
           <el-button v-if="canReceive(row)" link type="primary" @click="openReceive(row)">{{ t('common.receive') }}</el-button>
           <el-button v-if="canSapPost(row)" link type="warning" @click="submitSapPost(row)">{{ t('common.sapPost') }}</el-button>
+          <el-button v-if="canClose(row)" link type="danger" @click="closeInboundOrder(row)">关闭</el-button>
           <el-button v-if="canCancelInbound(row)" link type="danger" @click="cancelInboundOrder(row)">{{ t('common.cancel') }}</el-button>
         </template>
       </el-table-column>
@@ -231,6 +232,7 @@ import { inboundService } from '../../api/services'
 import { INBOUND_ORDER_STATUS_DEFINITIONS, SAP_POST_STATUS_DEFINITIONS } from '../../constants/orderStatus'
 import {
   canCancelInboundOrder,
+  canCloseInboundOrder,
   canCollectSnInboundOrder,
   canEditInboundOrder,
   canPostSapInboundOrder,
@@ -370,6 +372,46 @@ async function submitSapPost(row: Row) {
   await load()
 }
 
+async function closeInboundOrder(row: Row) {
+  if (row.status === 'PARTIAL_RECEIVED') {
+    try {
+      await ElMessageBox.confirm(
+        '当前预期到货通知单尚未全部收货，是否将未收货数量生成新的预期到货通知单？',
+        '部分收货关单确认',
+        {
+          type: 'warning',
+          confirmButtonText: '生成分单并关闭',
+          cancelButtonText: '仅关闭原单',
+          distinguishCancelAndClose: true
+        }
+      )
+      await submitInboundClose(row, true)
+    } catch (action) {
+      if (action === 'cancel') {
+        await submitInboundClose(row, false)
+      }
+    }
+    return
+  }
+  await ElMessageBox.confirm(
+    '是否确认关闭该预期到货通知单？',
+    '关闭预期到货通知单',
+    { type: 'warning', confirmButtonText: '确认关闭', cancelButtonText: '取消' }
+  )
+  await submitInboundClose(row, false)
+}
+
+async function submitInboundClose(row: Row, generateSplitOrder: boolean) {
+  const result = await inboundService.close(Number(row.id), {
+    operator: 'wh_admin',
+    generateSplitOrder,
+    remark: generateSplitOrder ? '部分收货关闭生成分单' : '关闭预期到货通知单'
+  })
+  const splitOrderNo = result?.splitOrderNo || result?.split_order_no
+  ElMessage.success(splitOrderNo ? `关闭成功，已生成分单 ${splitOrderNo}` : '关闭成功')
+  await load()
+}
+
 async function cancelInboundOrder(row: Row) {
   await ElMessageBox.confirm(
     `确认取消预期到货通知单 ${row.order_no}？取消后该单据进入终态。`,
@@ -470,6 +512,10 @@ function canLineReceive(order: Row, line: Row) {
 
 function canSapPost(row: Row) {
   return canPostSapInboundOrder(row)
+}
+
+function canClose(row: Row) {
+  return canCloseInboundOrder(row)
 }
 
 function canRetrySap(row: Row) {

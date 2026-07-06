@@ -1143,12 +1143,94 @@ async function importOutboundRows(event: Event) {
   }
 }
 
-async function closeOrder(row: Row) {
-  await ElMessageBox.confirm('关闭部分发运订单时会生成剩余数量分单，是否继续？', '关闭发运订单', { type: 'warning' })
-  const result = await outboundService.close(Number(row.id), { operator: 'manager' })
-  if (result?.order?.sap_post_status === 'FAILED') ElMessage.warning('订单已关闭，SAP 回传失败，可在列表重传')
-  else ElMessage.success('订单已关闭，SAP 回传已触发')
+function outboundCloseLines(row: Row) {
+  return Array.isArray(row.lines) ? row.lines as Row[] : []
+}
+
+function outboundClosePlannedQty(row: Row) {
+  return Number(row.order_qty ?? row.orderQty ?? row.planned_qty ?? row.plannedQty ?? 0)
+}
+
+function outboundCloseShippedQty(row: Row) {
+  return Number(row.shipped_qty ?? row.shippedQty ?? 0)
+}
+
+function isOutboundFullyShipped(row: Row) {
+  if (String(row.status || '').toUpperCase() === 'SHIPPED') return true
+  const lines = outboundCloseLines(row)
+  if (lines.length) {
+    return lines.every((line) => {
+      const planned = outboundClosePlannedQty(line)
+      return planned > 0 && outboundCloseShippedQty(line) >= planned
+    })
+  }
+  const planned = outboundClosePlannedQty(row)
+  return planned > 0 && outboundCloseShippedQty(row) >= planned
+}
+
+function hasOutboundRemainingQty(row: Row) {
+  const lines = outboundCloseLines(row)
+  if (lines.length) {
+    return lines.some((line) => outboundClosePlannedQty(line) - outboundCloseShippedQty(line) > 0)
+  }
+  return outboundClosePlannedQty(row) - outboundCloseShippedQty(row) > 0
+}
+
+function hasOutboundPartialShippedLine(row: Row) {
+  return outboundCloseLines(row).some((line) => {
+    const planned = outboundClosePlannedQty(line)
+    const shipped = outboundCloseShippedQty(line)
+    return planned > 0 && shipped > 0 && shipped < planned
+  })
+}
+
+function shouldShowOutboundSplitConfirm(row: Row) {
+  if (isOutboundFullyShipped(row)) return false
+  return hasOutboundRemainingQty(row)
+    && (String(row.status || '').toUpperCase() === 'PARTIAL_SHIPPED' || hasOutboundPartialShippedLine(row))
+}
+
+async function submitOutboundClose(row: Row, generateSplitOrder: boolean) {
+  const result = await outboundService.close(Number(row.id), { operator: 'manager', generateSplitOrder })
+  const splitOrderNo = result?.splitOrderNo || result?.split_order_no
+  const sapStatus = result?.order?.sap_post_status
+  const sapMessage = result?.order?.sap_post_result || ''
+  if (sapStatus === 'FAILED') {
+    ElMessage.warning(splitOrderNo
+      ? `订单已关闭，已生成分单 ${splitOrderNo}，SAP 回传失败：${sapMessage || '可在列表重传'}`
+      : `订单已关闭，SAP 回传失败：${sapMessage || '可在列表重传'}`)
+  } else if (splitOrderNo) {
+    ElMessage.success(`订单已关闭，已生成分单 ${splitOrderNo}，SAP 回传已触发`)
+  } else {
+    ElMessage.success('订单已关闭，SAP 回传已触发')
+  }
   await load()
+}
+
+async function closeOrder(row: Row) {
+  if (shouldShowOutboundSplitConfirm(row)) {
+    try {
+      await ElMessageBox.confirm(
+        '当前发运订单尚未全部发运，是否将未发运数量生成新的发运订单？',
+        '部分发运关单确认',
+        {
+          type: 'warning',
+          confirmButtonText: '生成分单并关闭',
+          cancelButtonText: '仅关闭原单',
+          distinguishCancelAndClose: true
+        }
+      )
+      await submitOutboundClose(row, true)
+    } catch (action) {
+      if (action === 'cancel') await submitOutboundClose(row, false)
+    }
+    return
+  }
+  await ElMessageBox.confirm('是否确认关闭该发运订单？', '关闭发运订单', {
+    type: 'warning',
+    confirmButtonText: '确认关闭'
+  })
+  await submitOutboundClose(row, false)
 }
 
 async function cancelOrder(row: Row) {

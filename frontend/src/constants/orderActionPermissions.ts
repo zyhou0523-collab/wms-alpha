@@ -9,7 +9,8 @@ const OUTBOUND_SHIPPABLE_STATUSES = ['PARTIAL_PICKED', 'PICKED', 'PARTIAL_SHIPPE
 const OUTBOUND_CLOSABLE_STATUSES = ['PARTIAL_SHIPPED', 'SHIPPED']
 
 const INBOUND_RECEIVABLE_STATUSES = ['CREATED', 'PARTIAL_RECEIVED', 'RECEIVING']
-const INBOUND_SAP_POSTABLE_STATUSES = ['PARTIAL_RECEIVED', 'RECEIVED', 'ON_SHELF', 'BOUND']
+const INBOUND_CLOSABLE_STATUSES = ['PARTIAL_RECEIVED', 'RECEIVED']
+const INBOUND_SAP_POSTABLE_STATUSES = ['PARTIAL_RECEIVED', 'RECEIVED', 'ON_SHELF', 'BOUND', 'CLOSED']
 
 function text(value: unknown) {
   return value == null ? '' : String(value)
@@ -192,6 +193,10 @@ export function canCancelInboundOrder(row: ActionRow = {}) {
     && pendingReceiveQty(row) === 0
     && receivedQty(row) === 0
     && !hasSapPosted(row)
+}
+
+export function canCloseInboundOrder(row: ActionRow = {}) {
+  return INBOUND_CLOSABLE_STATUSES.includes(status(row))
 }
 
 export function canPostSapInboundOrder(row: ActionRow = {}) {

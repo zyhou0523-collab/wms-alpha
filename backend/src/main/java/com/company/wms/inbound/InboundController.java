@@ -66,6 +66,11 @@ public class InboundController {
     return ApiResponse.ok(service.cancel(id, body == null ? Map.of() : body));
   }
 
+  @PostMapping({"/api/inbound-orders/{id}/close", "/api/inbound/arrival-notices/{id}/close"})
+  public ApiResponse<Map<String, Object>> close(@PathVariable long id, @RequestBody(required = false) Map<String, Object> body) {
+    return ApiResponse.ok(service.close(id, body == null ? Map.of() : body));
+  }
+
   @PostMapping({"/api/inbound-orders/{id}/receipts/{receiptId}/cancel", "/api/inbound/arrival-notices/{id}/receipts/{receiptId}/cancel"})
   public ApiResponse<Map<String, Object>> cancelReceipt(
       @PathVariable long id,

@@ -763,20 +763,38 @@ public class ShippingOrderService {
     refreshOrder(id);
     order = requireOrder(id);
     validateOutboundClosable(order, operator(body));
-    int planned = intValue(order.get("planned_qty"), 0);
     int shipped = intValue(order.get("shipped_qty"), 0);
     if (shipped <= 0) throw new IllegalArgumentException("没有发运记录的订单不允许关闭");
     String orderNo = String.valueOf(order.get("order_no"));
     List<Map<String, Object>> lineRows = lines(id);
-    if (shipped < planned) {
+    boolean fullyShipped = isFullyShipped(order, lineRows);
+    boolean generateSplitOrder = bool(body.get("generateSplitOrder"));
+    String splitOrderNo = "";
+    if (!fullyShipped && generateSplitOrder) {
+      if (remainingOutboundQty(lineRows) <= 0) throw new IllegalArgumentException("当前发运订单不存在未发运数量，不允许生成空分单");
       assertPartialCloseAllowed(lineRows);
-      createSplitOrder(order, lineRows, operator(body));
+      splitOrderNo = createSplitOrder(order, lineRows, operator(body));
     }
     jdbc.update("UPDATE wms_outbound_order SET status = 'CLOSED' WHERE id = :id", params("id", id));
     jdbc.update("UPDATE wms_outbound_order_detail SET status = 'CLOSED' WHERE order_id = :id", params("id", id));
-    logStatus(id, orderNo, String.valueOf(order.get("status")), "CLOSED", "CLOSE", operator(body), shipped < planned ? "部分发运关闭，已生成剩余分单" : "完全发运关闭");
-    repo.operationLog("OUTBOUND", orderNo, "CLOSE", operator(body), "SUCCESS", "关闭发运订单");
-    return detail(id);
+    String closeMessage = StringUtils.hasText(splitOrderNo)
+        ? "部分发运关闭，生成剩余分单 " + splitOrderNo
+        : (fullyShipped ? "完全发运关闭" : "部分发运关闭，不生成分单");
+    logStatus(id, orderNo, String.valueOf(order.get("status")), "CLOSED", "CLOSE", operator(body), closeMessage);
+    repo.operationLog("OUTBOUND", orderNo, "CLOSE", operator(body), "SUCCESS", closeMessage);
+    try {
+      sapPost(id, bool(body.get("forceSapFail")), operator(body), null);
+    } catch (Exception ex) {
+      String error = firstText(ex.getMessage(), "SAP 出库扣减失败");
+      jdbc.update("UPDATE wms_outbound_order SET sap_post_status = 'FAILED', sap_post_result = :error WHERE id = :id",
+          params("id", id, "error", error));
+      repo.operationLog("OUTBOUND", orderNo, "CLOSE_TRIGGER_SAP", operator(body), "FAILED", error);
+    }
+    Map<String, Object> result = new LinkedHashMap<>(detail(id));
+    result.put("success", true);
+    result.put("message", "关闭成功");
+    result.put("splitOrderNo", splitOrderNo);
+    return result;
   }
 
   @Transactional
@@ -1543,7 +1561,25 @@ public class ShippingOrderService {
     }
   }
 
-  private void createSplitOrder(Map<String, Object> order, List<Map<String, Object>> lines, String operator) {
+  private boolean isFullyShipped(Map<String, Object> order, List<Map<String, Object>> lines) {
+    if ("SHIPPED".equals(orderStatus(order))) return true;
+    if (!lines.isEmpty()) {
+      return lines.stream().allMatch(line -> {
+        int planned = intValue(line.get("order_qty"), intValue(line.get("planned_qty"), 0));
+        return planned > 0 && intValue(line.get("shipped_qty"), 0) >= planned;
+      });
+    }
+    int planned = intValue(order.get("planned_qty"), 0);
+    return planned > 0 && intValue(order.get("shipped_qty"), 0) >= planned;
+  }
+
+  private int remainingOutboundQty(List<Map<String, Object>> lines) {
+    return lines.stream()
+        .mapToInt(line -> Math.max(intValue(line.get("order_qty"), intValue(line.get("planned_qty"), 0)) - intValue(line.get("shipped_qty"), 0), 0))
+        .sum();
+  }
+
+  private String createSplitOrder(Map<String, Object> order, List<Map<String, Object>> lines, String operator) {
     String sourceOrderNo = String.valueOf(order.get("order_no"));
     int splitIndex = repo.number("""
         SELECT COUNT(*) + 1 FROM wms_outbound_order
@@ -1569,6 +1605,7 @@ public class ShippingOrderService {
         WHERE id = :id
         """, params("splitOrderNo", splitOrderNo, "id", order.get("id")));
     long splitId = repo.number("SELECT id FROM wms_outbound_order WHERE order_no = :orderNo", params("orderNo", splitOrderNo)).longValue();
+    int splitLineCount = 0;
     for (Map<String, Object> line : lines) {
       int remain = Math.max(intValue(line.get("order_qty"), 0) - intValue(line.get("shipped_qty"), 0), 0);
       if (remain <= 0) continue;
@@ -1583,9 +1620,12 @@ public class ShippingOrderService {
           """, params("orderId", splitId, "lineNo", line.get("line_no"), "productId", line.get("product_id"),
           "plannedQty", remain, "batchNo", line.get("batch_no"), "sapPlant", line.get("sap_plant"),
           "unit", firstText(text(line, "unit"), "PCS"), "snRequired", intValue(line.get("sn_required"), 0)));
+      splitLineCount++;
     }
+    if (splitLineCount <= 0) throw new IllegalArgumentException("当前发运订单不存在未发运数量，不允许生成空分单");
     refreshOrder(splitId);
     logStatus(splitId, splitOrderNo, null, "CREATED", "SPLIT_FROM_PARTIAL_SHIPMENT", operator, "原单部分发运关闭生成分单");
+    return splitOrderNo;
   }
 
   private long defaultLocationId(Map<String, Object> order, Map<String, Object> line) {

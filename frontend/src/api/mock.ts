@@ -11,6 +11,7 @@ import {
 import {
   canAllocateOutboundOrder,
   canCancelAllocationOutboundOrder,
+  canCloseInboundOrder,
   canCancelInboundOrder,
   canCancelOutboundOrder,
   canCancelPickOutboundOrder,
@@ -1544,6 +1545,7 @@ export async function mockRequest<T>(config: AxiosRequestConfig): Promise<T> {
     }
     if (method === 'get' && !action) return productionDetail(store, id) as T
     if (method === 'put' && !action) return mockUpdateInboundOrder(store, id, (config.data || {}) as Row) as T
+    if (method === 'post' && action === 'close') return runMockAction(store, id, 'CLOSE_INBOUND_ORDER', (config.data || {}) as Row, () => mockCloseInboundOrder(store, id, (config.data || {}) as Row)) as T
     if (method === 'post' && action === 'cancel') return mockCancelInboundOrder(store, id, (config.data || {}) as Row) as T
     if (method === 'post' && action === 'receipts' && segments[url.startsWith('/inbound-orders/') ? 5 : 6] === 'cancel') {
       const receiptId = url.startsWith('/inbound-orders/') ? Number(segments[4]) : Number(segments[5])
@@ -1846,9 +1848,11 @@ function normalizeStore(store: any) {
   ensureOutboundMockStore(store)
   ensureShippingOrderV3Demo(store)
   ensureOutboundAllocationShipDemo(store)
+  ensureOutboundCloseDemoOrders(store)
   ensureOutboundMockLines(store)
   ensureMockOwnerOnStock(store)
   ensureMixedInboundDemo(store)
+  ensureInboundCloseDemoOrders(store)
   ensureInboundShipFromCountries(store)
   ensureWarehouseAuthorizationDemo(store)
   ensureCodePrintDemo(store)
@@ -2166,6 +2170,114 @@ function ensureMixedInboundDemo(store: any) {
     })
   })
   refreshInboundHeaderStatus(store, Number(order.id))
+}
+
+function ensureInboundCloseDemoOrders(store: any) {
+  store.inboundOrders ||= []
+  store.inboundOrderLines ||= []
+  store.inboundReceipts ||= []
+  store.inboundReceiptLines ||= []
+  const warehouse = store.warehouses.find((row: Row) => row.warehouse_code === 'WH-HZ-CENTRAL') || store.warehouses[0] || {}
+  const productByCode = (code: string) =>
+    store.products.find((row: Row) => row.owner_code === '3060' && row.product_code === code) ||
+    store.products.find((row: Row) => row.product_code === code) ||
+    store.products[0] || {}
+  const makeOrder = (orderNo: string, status: string, sapStatus: string, lineDefs: Array<[number, string, number, number]>) => {
+    let order = store.inboundOrders.find((row: Row) => row.order_no === orderNo)
+    if (order) return order
+    order = {
+      id: nextId(store.inboundOrders),
+      order_no: orderNo,
+      source_order_no: `SRC-${orderNo}`,
+      mes_work_order_no: `MES-${orderNo}`,
+      inbound_type: 'PRODUCTION',
+      source_system: 'SAP',
+      warehouse_code: warehouse.warehouse_code || 'WH-HZ-CENTRAL',
+      warehouse_name: warehouse.warehouse_name || '杭州中心仓',
+      owner_code: '3060',
+      owner_name: '杭州利沃得',
+      ship_from_country: '中国',
+      shipFromCountry: '中国',
+      sap_plant: '3060',
+      planned_qty: 0,
+      received_qty: 0,
+      shelved_qty: 0,
+      status,
+      sap_material_doc_no: '',
+      sap_post_status: sapStatus,
+      sap_post_result: sapStatus === 'FAILED' ? 'SAP 入库回传失败，待重传' : '',
+      split_from_order_no: '',
+      split_flag: 0,
+      remark: '入库关闭流程演示单',
+      created_by: 'system',
+      updated_by: 'system',
+      created_at: now(),
+      updated_at: now()
+    }
+    store.inboundOrders.unshift(order)
+    lineDefs.forEach(([lineNo, productCode, plannedQty, receivedQty]) => {
+      const product = productByCode(productCode)
+      const line = inboundLine(order, lineNo, product, plannedQty, receivedQty, 0)
+      line.sn_required = 0
+      line.sap_plant = '3060'
+      line.sap_storage_location = '1001'
+      refreshInboundLineStatus(line)
+      store.inboundOrderLines.push(line)
+    })
+    refreshInboundHeaderStatus(store, Number(order.id))
+    order.status = status
+    order.sap_post_status = sapStatus
+    return order
+  }
+  const partial = makeOrder('INB-DEMO-PARTIAL-CLOSE-001', 'PARTIAL_RECEIVED', 'FAILED', [
+    [10, 'HXEDE081R10002', 5, 3],
+    [20, 'LHECCHR11002', 3, 0]
+  ])
+  const full = makeOrder('INB-DEMO-FULL-CLOSE-001', 'RECEIVED', 'SUCCESS', [
+    [10, 'HXEDE081R10002', 2, 2],
+    [20, 'LHECCHR11002', 4, 4]
+  ])
+  makeOrder('INB-DEMO-CREATED-CANCEL-001', 'CREATED', 'NOT_POSTED', [
+    [10, 'HXEDE081R10002', 5, 0]
+  ])
+  ensureInboundCloseDemoReceipt(store, partial, 'RCV-INB-DEMO-PARTIAL-CLOSE-001-01', 'FAILED')
+  ensureInboundCloseDemoReceipt(store, full, 'RCV-INB-DEMO-FULL-CLOSE-001-01', 'SUCCESS')
+}
+
+function ensureInboundCloseDemoReceipt(store: any, order: Row, receiptNo: string, sapStatus: string) {
+  if ((store.inboundReceipts || []).some((row: Row) => row.receipt_no === receiptNo)) return
+  const lines = (store.inboundOrderLines || [])
+    .filter((line: Row) => Number(line.order_id) === Number(order.id) && Number(line.received_qty || 0) > 0)
+  if (!lines.length) return
+  const receipt = {
+    id: nextId(store.inboundReceipts),
+    receipt_no: receiptNo,
+    inbound_order_id: order.id,
+    inbound_order_no: order.order_no,
+    receipt_time: now(),
+    receipt_user: 'wh_admin',
+    status: 'RECEIVED',
+    sap_post_status: sapStatus,
+    sap_material_doc_no: sapStatus === 'SUCCESS' ? `5000${Date.now() % 1000000}` : '',
+    sap_post_result: sapStatus === 'SUCCESS' ? 'SAP 入库回传成功' : 'SAP 入库回传失败，待重传',
+    created_at: now()
+  }
+  store.inboundReceipts.unshift(receipt)
+  lines.forEach((line: Row) => {
+    store.inboundReceiptLines.unshift({
+      id: nextId(store.inboundReceiptLines),
+      receipt_id: receipt.id,
+      inbound_order_line_id: line.id,
+      line_no: line.line_no,
+      product_id: line.product_id,
+      product_code: line.product_code,
+      receive_qty: Number(line.received_qty || 0),
+      sap_post_qty: sapStatus === 'SUCCESS' ? Number(line.received_qty || 0) : 0,
+      sap_post_status: sapStatus,
+      sap_material_doc_no: receipt.sap_material_doc_no,
+      sap_post_result: receipt.sap_post_result
+    })
+  })
 }
 
 function ensureInboundMockLines(store: any) {
@@ -2685,6 +2797,123 @@ function ensureOutboundAllocationShipDemo(store: any) {
   }
 
   store.__wmsOutboundAllocationShipDemo = demoVersion
+  saveStore(store)
+}
+
+function ensureOutboundCloseDemoOrders(store: any) {
+  const demoVersion = 'outbound-close-demo-v2'
+  const demoOrderNos = [
+    'SO-OUT-DEMO-FULL-SHIP-CLOSE-001',
+    'SO-OUT-DEMO-PARTIAL-SHIP-CLOSE-001',
+    'SO-OUT-DEMO-PARTIAL-SHIP-NOSPLIT-001'
+  ]
+  const missingDemo = demoOrderNos.some((orderNo) => !store.outboundOrders?.some((row: Row) => row.order_no === orderNo))
+  if (store.__wmsOutboundCloseDemo === demoVersion && !missingDemo) return
+  resetShippingOrderDemo(store, demoOrderNos)
+
+  const warehouse = (store.warehouses || []).find((row: Row) => row.warehouse_code === 'HZ') ||
+    (store.warehouses || []).find((row: Row) => row.warehouse_code === 'WH-HZ-CENTRAL') ||
+    (store.warehouses || [])[0]
+  const ownerCode = '3060'
+  const productByCode = (code: string) => mockProductForOwner(store, code, ownerCode) ||
+    (store.products || []).find((row: Row) => row.product_code === code) ||
+    (store.products || [])[0]
+  const gt3 = productByCode('GT3-10KD1R11004')
+  const hxde = productByCode('HXEDE081R10002')
+  const lhec = productByCode('LHECCHR11002') || hxde
+  const ownerName = gt3?.owner_name || hxde?.owner_name || '杭州利沃得'
+
+  const createCloseDemo = (orderNo: string, status: string, lineDefs: Row[], relatedOrderNo: string) => {
+    mockCreateShippingOrderV3(store, {
+      shipmentOrderNo: orderNo,
+      orderType: 'SALES_OUTBOUND',
+      relatedOrderNo,
+      salesOrderNo: relatedOrderNo,
+      warehouseCode: warehouse.warehouse_code,
+      ownerCode,
+      ownerName,
+      consigneeCode: 'CUST-TESLA-001',
+      lines: lineDefs.map((line) => ({
+        lineNo: line.lineNo,
+        productCode: line.product.product_code,
+        orderQty: line.orderQty,
+        snRequired: Boolean(line.product.sn_managed)
+      }))
+    })
+    const order = (store.outboundOrders || []).find((row: Row) => row.order_no === orderNo)
+    if (!order) return
+    const lines = (store.outboundOrderLines || [])
+      .filter((line: Row) => Number(line.order_id) === Number(order.id))
+      .sort((a: Row, b: Row) => Number(a.line_no || 0) - Number(b.line_no || 0))
+    lineDefs.forEach((definition, index) => {
+      const line = lines[index]
+      if (!line) return
+      const planned = Number(definition.orderQty || 0)
+      const shipped = Number(definition.shippedQty || 0)
+      const lineStatus = shipped >= planned ? 'SHIPPED' : shipped > 0 ? 'PARTIAL_SHIPPED' : 'CREATED'
+      Object.assign(line, {
+        planned_qty: planned,
+        order_qty: planned,
+        allocated_qty: shipped,
+        picked_qty: shipped,
+        review_qty: shipped,
+        shipped_qty: shipped,
+        status: lineStatus,
+        line_status: lineStatus
+      })
+    })
+    syncOutboundHeaderQty(store.outboundOrders, store.outboundOrderLines)
+    Object.assign(order, {
+      status,
+      sap_post_status: 'NOT_POSTED',
+      sap_post_result: '',
+      sap_material_doc_no: '',
+      logistics_company: 'SF',
+      carrier_name: 'SF',
+      tracking_no: `${orderNo}-TRACK`,
+      updated_at: now(),
+      remark: status === 'SHIPPED' ? '完全发运关闭演示：关闭时不生成分单' : '部分发运关闭演示：可选择是否生成剩余分单'
+    })
+    const shippedQty = Number(order.shipped_qty || 0)
+    if (shippedQty > 0 && !(store.shipmentRecords || []).some((row: Row) => row.outbound_order_no === orderNo)) {
+      store.shipmentRecords.unshift({
+        id: nextId(store.shipmentRecords || []),
+        shipment_no: `SHP-${orderNo}-01`,
+        outbound_order_id: order.id,
+        outbound_order_no: order.order_no,
+        carrier: 'SF',
+        tracking_no: `${orderNo}-TRACK`,
+        shipped_qty: shippedQty,
+        shipper: 'logistics',
+        ship_time: now(),
+        shipment_status: 'SHIPPED',
+        status: 'SHIPPED',
+        sap_post_status: 'NOT_POSTED',
+        sap_material_doc_no: '',
+        sap_post_result: '',
+        remark: '发运订单关闭流程演示发货记录',
+        created_at: now()
+      })
+    }
+    addOutboundOperationLog(store, orderNo, 'SEED_OUTBOUND_CLOSE_DEMO', 'system', 'SUCCESS', '初始化发运订单关闭流程演示数据')
+  }
+
+  createCloseDemo('SO-OUT-DEMO-FULL-SHIP-CLOSE-001', 'SHIPPED', [
+    { lineNo: 10, product: gt3, orderQty: 2, shippedQty: 2 },
+    { lineNo: 20, product: hxde, orderQty: 3, shippedQty: 3 }
+  ], 'SO-DEMO-FULL-SHIP-CLOSE-001')
+
+  createCloseDemo('SO-OUT-DEMO-PARTIAL-SHIP-CLOSE-001', 'PARTIAL_SHIPPED', [
+    { lineNo: 10, product: gt3, orderQty: 4, shippedQty: 2 },
+    { lineNo: 20, product: hxde, orderQty: 3, shippedQty: 0 }
+  ], 'SO-DEMO-PARTIAL-SHIP-CLOSE-001')
+
+  createCloseDemo('SO-OUT-DEMO-PARTIAL-SHIP-NOSPLIT-001', 'PARTIAL_SHIPPED', [
+    { lineNo: 10, product: hxde, orderQty: 5, shippedQty: 2 },
+    { lineNo: 20, product: lhec, orderQty: 2, shippedQty: 0 }
+  ], 'SO-DEMO-PARTIAL-SHIP-NOSPLIT-001')
+
+  store.__wmsOutboundCloseDemo = demoVersion
   saveStore(store)
 }
 
@@ -5808,6 +6037,82 @@ function rollbackShipmentInventory(store: any, order: Row, allocation: Row) {
   }
 }
 
+function mockOutboundLinePlannedQty(line: Row) {
+  return Number(line.planned_qty || line.order_qty || 0)
+}
+
+function mockOutboundLineShippedQty(line: Row) {
+  return Number(line.shipped_qty || 0)
+}
+
+function mockOutboundRemainingQty(lines: Row[]) {
+  return lines.reduce((total, line) => total + Math.max(mockOutboundLinePlannedQty(line) - mockOutboundLineShippedQty(line), 0), 0)
+}
+
+function mockOutboundFullyShipped(order: Row, lines: Row[]) {
+  if (order.status === 'SHIPPED') return true
+  if (lines.length) return lines.every((line) => {
+    const planned = mockOutboundLinePlannedQty(line)
+    return planned > 0 && mockOutboundLineShippedQty(line) >= planned
+  })
+  return Number(order.planned_qty || 0) > 0 && Number(order.shipped_qty || 0) >= Number(order.planned_qty || 0)
+}
+
+function mockCreateOutboundCloseSplitOrder(store: any, order: Row, lines: Row[], operator: string) {
+  const remainingLines = lines.filter((line) => mockOutboundLinePlannedQty(line) - mockOutboundLineShippedQty(line) > 0)
+  if (!remainingLines.length) throw new Error('当前发运订单不存在未发运数量，不允许生成空分单')
+  let splitIndex = (store.outboundOrders || []).filter((row: Row) => row.parent_order_no === order.order_no).length + 1
+  let splitNo = `${order.order_no}-S${String(splitIndex).padStart(2, '0')}`
+  while ((store.outboundOrders || []).some((row: Row) => row.order_no === splitNo)) {
+    splitIndex += 1
+    splitNo = `${order.order_no}-S${String(splitIndex).padStart(2, '0')}`
+  }
+  const splitOrder = {
+    ...order,
+    id: nextId(store.outboundOrders || []),
+    order_no: splitNo,
+    shipment_order_no: splitNo,
+    parent_order_no: order.order_no,
+    split_flag: 1,
+    planned_qty: 0,
+    allocated_qty: 0,
+    picked_qty: 0,
+    review_qty: 0,
+    shipped_qty: 0,
+    status: 'CREATED',
+    sap_post_status: 'NOT_POSTED',
+    sap_post_result: '',
+    sap_material_doc_no: '',
+    logistics_company: '',
+    carrier_name: '',
+    tracking_no: '',
+    remark: '部分发运关闭后生成的剩余发运分单',
+    created_at: now(),
+    updated_at: now()
+  }
+  store.outboundOrders.unshift(splitOrder)
+  remainingLines.forEach((line) => {
+    const remain = mockOutboundLinePlannedQty(line) - mockOutboundLineShippedQty(line)
+    store.outboundOrderLines.unshift({
+      ...line,
+      id: nextId(store.outboundOrderLines || []) + Math.random(),
+      order_id: splitOrder.id,
+      order_no: splitNo,
+      planned_qty: remain,
+      order_qty: remain,
+      allocated_qty: 0,
+      picked_qty: 0,
+      review_qty: 0,
+      shipped_qty: 0,
+      status: 'CREATED',
+      line_status: 'CREATED'
+    })
+  })
+  syncOutboundHeaderQty(store.outboundOrders, store.outboundOrderLines)
+  addOutboundOperationLog(store, splitNo, 'SPLIT_FROM_PARTIAL_SHIPMENT', operator, 'SUCCESS', `由 ${order.order_no} 部分发运关闭生成`)
+  return splitNo
+}
+
 function mockCloseOrder(store: any, id: number, body: Row) {
   const order = mockOutboundOrder(store, id)
   refreshMockOrderQty(store, id)
@@ -5816,7 +6121,10 @@ function mockCloseOrder(store: any, id: number, body: Row) {
   }
   if (Number(order.shipped_qty || 0) <= 0) throw new Error('没有发运记录的订单不允许关闭')
   const lines = (store.outboundOrderLines || []).filter((line: Row) => Number(line.order_id) === id)
-  if (Number(order.shipped_qty || 0) < Number(order.planned_qty || 0)) {
+  const fullyShipped = mockOutboundFullyShipped(order, lines)
+  let splitNo = ''
+  if (!fullyShipped && Boolean(body.generateSplitOrder)) {
+    if (mockOutboundRemainingQty(lines) <= 0) throw new Error('当前发运订单不存在未发运数量，不允许生成空分单')
     const blockingLines = lines.filter((line: Row) => {
       const planned = Number(line.planned_qty || line.order_qty || 0)
       const shipped = Number(line.shipped_qty || 0)
@@ -5826,48 +6134,7 @@ function mockCloseOrder(store: any, id: number, body: Row) {
     if (blockingLines.length) {
       throw new Error('存在已分配/已拣货的数据，不允许直接关单。请先释放分配或回退拣货，使未发运明细回到创建状态后再关单。')
     }
-    const splitNo = `${order.order_no}-S01`
-    if (!store.outboundOrders.some((row: Row) => row.order_no === splitNo)) {
-      const splitOrder = {
-        ...order,
-        id: Date.now(),
-        order_no: splitNo,
-        shipment_order_no: splitNo,
-        parent_order_no: order.order_no,
-        split_flag: 1,
-        planned_qty: 0,
-        allocated_qty: 0,
-        picked_qty: 0,
-        shipped_qty: 0,
-        status: 'CREATED',
-        sap_post_status: 'NOT_POSTED',
-        sap_post_result: '',
-        logistics_company: '',
-        carrier_name: '',
-        tracking_no: '',
-        created_at: now()
-      }
-      store.outboundOrders.unshift(splitOrder)
-      lines.forEach((line: Row) => {
-        const remain = Number(line.planned_qty || line.order_qty || 0) - Number(line.shipped_qty || 0)
-        if (remain <= 0) return
-        store.outboundOrderLines.unshift({
-          ...line,
-          id: Date.now() + Math.random(),
-          order_id: splitOrder.id,
-          order_no: splitNo,
-          planned_qty: remain,
-          order_qty: remain,
-          allocated_qty: 0,
-          picked_qty: 0,
-          review_qty: 0,
-          shipped_qty: 0,
-          status: 'CREATED',
-          line_status: 'CREATED'
-        })
-      })
-      syncOutboundHeaderQty(store.outboundOrders, store.outboundOrderLines)
-    }
+    splitNo = mockCreateOutboundCloseSplitOrder(store, order, lines, body.operator || 'manager')
   }
   order.status = 'CLOSED'
   lines.forEach((line: Row) => {
@@ -5878,10 +6145,10 @@ function mockCloseOrder(store: any, id: number, body: Row) {
   order.status = 'CLOSED'
   order.updated_at = now()
   order.sap_post_result = sapOk ? `SAP 回传成功，凭证号 ${order.sap_material_doc_no}` : 'SAP 出库扣减 Mock 失败'
-  addOutboundOperationLog(store, order.order_no, 'CLOSE', body.operator || 'manager', 'SUCCESS', '关闭发运订单')
+  addOutboundOperationLog(store, order.order_no, 'CLOSE', body.operator || 'manager', 'SUCCESS', splitNo ? `部分发运关闭，生成剩余分单 ${splitNo}` : (fullyShipped ? '完全发运关闭' : '部分发运关闭，不生成分单'))
   addOutboundOperationLog(store, order.order_no, 'CLOSE_TRIGGER_SAP', body.operator || 'manager', sapOk ? 'SUCCESS' : 'FAILED', order.sap_post_result)
   saveStore(store)
-  return mockOutboundDetail(store, id)
+  return { ...mockOutboundDetail(store, id), success: true, message: '关闭成功', splitOrderNo: splitNo }
 }
 
 function refreshMockTask(store: any, taskId: number) {
@@ -6711,6 +6978,106 @@ function mockCancelSnCollection(store: any, orderId: number, lineId: number, bod
   addOperationLog(store, order.order_no, 'CANCEL_SN_COLLECT', body.operator || 'wh_admin', 'SUCCESS', `取消未收货 SN 采集 ${serials.length} 个`)
   saveStore(store)
   return productionDetail(store, orderId)
+}
+
+function mockCloseInboundOrder(store: any, orderId: number, body: Row) {
+  const order = requireMockOrder(store, orderId)
+  const operator = body.operator || 'wh_admin'
+  const status = String(order.status || '')
+  if (status === 'CREATED') {
+    failInboundAction(store, order, 'CLOSE_INBOUND_ORDER', operator, '创建状态单据请使用取消操作')
+  }
+  if (status === 'CLOSED') {
+    failInboundAction(store, order, 'CLOSE_INBOUND_ORDER', operator, '当前单据已关闭，不允许重复关闭')
+  }
+  if (status === 'CANCELED') {
+    failInboundAction(store, order, 'CLOSE_INBOUND_ORDER', operator, '当前单据已取消，不允许关闭')
+  }
+  if (!canCloseInboundOrder(order)) {
+    failInboundAction(store, order, 'CLOSE_INBOUND_ORDER', operator, `当前状态【${currentStatusText(order)}】不允许关闭预期到货通知单，仅部分收货或完全收货状态允许关闭`)
+  }
+  let splitOrderNo = ''
+  if (status === 'PARTIAL_RECEIVED' && body.generateSplitOrder === true) {
+    const remainingLines = inboundRemainingLinesForClose(store, order)
+    if (!remainingLines.length) {
+      failInboundAction(store, order, 'CLOSE_INBOUND_ORDER', operator, '部分收货关闭生成分单时必须存在未收货数量')
+    }
+    splitOrderNo = mockCreateInboundSplitOrder(store, order, remainingLines, operator)
+  }
+  order.status = 'CLOSED'
+  order.updated_by = operator
+  order.updated_at = now()
+  ;(store.inboundOrderLines || [])
+    .filter((line: Row) => Number(line.order_id) === Number(orderId))
+    .forEach((line: Row) => {
+      line.status = 'CLOSED'
+    })
+  addOperationLog(
+    store,
+    order.order_no,
+    'CLOSE_INBOUND_ORDER',
+    operator,
+    'SUCCESS',
+    splitOrderNo ? `部分收货关闭，生成剩余分单 ${splitOrderNo}` : (status === 'PARTIAL_RECEIVED' ? '部分收货关闭，不生成分单' : '完全收货关闭')
+  )
+  saveStore(store)
+  return { ...productionDetail(store, orderId), success: true, message: '关闭成功', splitOrderNo }
+}
+
+function inboundRemainingLinesForClose(store: any, order: Row) {
+  return (store.inboundOrderLines || [])
+    .filter((line: Row) => Number(line.order_id) === Number(order.id))
+    .map((line: Row) => ({
+      line,
+      remainingQty: Math.max(Number(line.planned_qty || 0) - Number(line.received_qty || 0), 0)
+    }))
+    .filter((item: Row) => Number(item.remainingQty || 0) > 0)
+}
+
+function mockCreateInboundSplitOrder(store: any, order: Row, remainingLines: Row[], operator: string) {
+  const splitIndex = (store.inboundOrders || []).filter((row: Row) => row.split_from_order_no === order.order_no).length + 1
+  const splitOrderNo = `${order.order_no}-S${String(splitIndex).padStart(2, '0')}`
+  const splitOrder = {
+    ...order,
+    id: nextId(store.inboundOrders),
+    order_no: splitOrderNo,
+    orderNo: splitOrderNo,
+    status: 'CREATED',
+    planned_qty: remainingLines.reduce((total: number, item: Row) => total + Number(item.remainingQty || 0), 0),
+    received_qty: 0,
+    shelved_qty: 0,
+    sap_post_status: 'NOT_POSTED',
+    sap_post_result: '',
+    sap_material_doc_no: '',
+    split_from_order_no: order.order_no,
+    split_flag: 1,
+    remark: `由部分收货关单生成，来源单号 ${order.order_no}`,
+    created_by: operator,
+    updated_by: operator,
+    created_at: now(),
+    updated_at: now()
+  }
+  store.inboundOrders.unshift(splitOrder)
+  remainingLines.forEach((item: Row) => {
+    const source = item.line
+    const splitLine = inboundLine(splitOrder, Number(source.line_no), source, Number(item.remainingQty || 0), 0, 0)
+    Object.assign(splitLine, {
+      product_id: source.product_id,
+      product_code: source.product_code,
+      product_name: source.product_name,
+      unit: source.unit || 'PCS',
+      sn_required: Number(source.sn_required || 0),
+      sap_plant: source.sap_plant || order.sap_plant || order.owner_code || '',
+      sap_storage_location: source.sap_storage_location || '1001',
+      owner_code: source.owner_code || order.owner_code || '',
+      batch_no: source.batch_no || `BATCH-IN-${splitOrderNo}-${source.line_no}`,
+      quality_status: source.quality_status || 'QUALIFIED',
+      status: 'CREATED'
+    })
+    store.inboundOrderLines.push(splitLine)
+  })
+  addOperationLog(store, splitOrderNo, 'SPLIT_FROM_PARTIAL_RECEIPT', operator, 'SUCCESS', `由 ${order.order_no} 部分收货关闭生成`)
+  return splitOrderNo
 }
 
 function mockCancelInboundOrder(store: any, orderId: number, body: Row) {

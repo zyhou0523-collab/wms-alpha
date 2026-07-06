@@ -2,18 +2,18 @@
 
 WMS Alpha 是面向新能源制造业成品仓储场景的 WMS PC 端原型系统，用于演示基础数据、仓库设置、入库闭环、出库 / 发运闭环、库存查询、SN 追踪、库存移动、库存盘点、数据驾驶舱、报表中心、接口中心、系统管理和多语种基础能力。
 
-当前版本：**WMS PC V2.3**
+当前版本：**WMS 独立版 V2.4**
 
 Git 仓库：https://github.com/zyhou0523-collab/wms-alpha.git
 
-## V2.3 发布信息
+## V2.4 冻结信息
 
-- 版本号：WMS PC V2.3
-- 版本类型：PC 端演示环境治理与稳定版
-- 发布日期：2026-07-03
-- 发布分支：`release/wms-pc-v2.3`
-- 发布 Tag：`WMS_PC_V2.3`
-- 发布说明：[docs/RELEASE_NOTE_V2.3.md](./docs/RELEASE_NOTE_V2.3.md)
+- 版本号：WMS 独立版 V2.4
+- 版本类型：PC 独立系统冻结版 / SaaS 化迁移基线
+- 冻结日期：2026-07-06
+- 稳定分支：`release/wms-PCstandalone-v2.4`
+- 版本 Tag：`PCwms-standalone-v2.4`
+- 冻结说明：[docs/WMS_STANDALONE_V2.4_FREEZE_NOTE.md](./docs/WMS_STANDALONE_V2.4_FREEZE_NOTE.md)
 
 ## 主要功能模块
 
@@ -44,7 +44,7 @@ Git 仓库：https://github.com/zyhou0523-collab/wms-alpha.git
 ```bash
 git clone https://github.com/zyhou0523-collab/wms-alpha.git
 cd wms-alpha
-git checkout release/wms-pc-v2.3
+git checkout release/wms-PCstandalone-v2.4
 
 docker compose up -d mysql
 
@@ -53,6 +53,8 @@ mysql -uroot -p123456 wms_alpha < sql/02_seed_master_data.sql
 mysql -uroot -p123456 wms_alpha < sql/03_seed_business_data.sql
 mysql -uroot -p123456 wms_alpha < sql/04_seed_status_governance.sql
 mysql -uroot -p123456 wms_alpha < sql/05_demo_status_cleanup.sql
+mysql -uroot -p123456 wms_alpha < sql/06_inbound_close_flow.sql
+mysql -uroot -p123456 wms_alpha < sql/07_outbound_close_flow.sql
 
 cd backend
 mvn spring-boot:run
@@ -140,6 +142,15 @@ wms-alpha/
 - `release/wms-pc-v2.0.1`：WMS PC V2.0.1 发布分支。
 - `release/wms-pc-v2.2`：WMS PC V2.2 演示验证分支。
 - `release/wms-pc-v2.3`：WMS PC V2.3 发布分支。
+- `release/wms-PCstandalone-v2.4`：WMS 独立版 V2.4 冻结分支，作为 SaaS 化迁移基线。
+
+## V2.4 冻结文档索引
+
+- 冻结说明：[docs/WMS_STANDALONE_V2.4_FREEZE_NOTE.md](./docs/WMS_STANDALONE_V2.4_FREEZE_NOTE.md)
+- 当前功能清单：[docs/WMS_CURRENT_FEATURE_LIST.md](./docs/WMS_CURRENT_FEATURE_LIST.md)
+- 当前数据库结构说明：[docs/WMS_CURRENT_DATABASE_STRUCTURE.md](./docs/WMS_CURRENT_DATABASE_STRUCTURE.md)
+- 当前接口初步清单：[docs/WMS_CURRENT_API_LIST.md](./docs/WMS_CURRENT_API_LIST.md)
+- SaaS 化迁移注意事项：[docs/WMS_SAAS_MIGRATION_NOTES.md](./docs/WMS_SAAS_MIGRATION_NOTES.md)
 
 ## V2.3 文档索引
 

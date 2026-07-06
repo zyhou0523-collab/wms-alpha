@@ -461,6 +461,8 @@ CREATE TABLE wms_inbound_order (
   ship_from_country VARCHAR(64) NULL,
   sap_plant VARCHAR(32) NULL,
   related_order_no VARCHAR(64) NULL,
+  split_from_order_no VARCHAR(64) NULL,
+  split_flag TINYINT(1) NOT NULL DEFAULT 0,
   planned_qty INT NOT NULL DEFAULT 0,
   received_qty INT NOT NULL DEFAULT 0,
   status VARCHAR(32) NOT NULL DEFAULT 'CREATED',

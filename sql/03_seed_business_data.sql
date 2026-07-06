@@ -280,6 +280,173 @@ JOIN wms_inbound_receipt_line rl ON rl.receipt_id = r.id
 JOIN wms_serial_number sn ON sn.inbound_order_line_id = rl.inbound_order_line_id AND sn.status = 'RECEIVED'
 WHERE r.receipt_no = 'RCV20260611010001';
 
+INSERT INTO wms_inbound_order (
+  order_no, source_order_no, mes_work_order_no, inbound_type, source_system,
+  warehouse_id, owner_code, owner_name, ship_from_country, sap_plant,
+  planned_qty, received_qty, status, sap_post_status, sap_post_result,
+  remark, created_by, updated_by, created_at
+)
+SELECT 'INB-DEMO-PARTIAL-CLOSE-001', 'SRC-INB-DEMO-PARTIAL-CLOSE-001', 'MES-INB-DEMO-PARTIAL-CLOSE-001',
+       'PRODUCTION', 'SAP', 1, '3060', '杭州利沃得', '中国', '3060',
+       8, 3, 'PARTIAL_RECEIVED', 'FAILED', 'SAP 入库回传失败，待重传',
+       '入库部分收货关单生成分单演示单', 'system', 'system', NOW()
+WHERE NOT EXISTS (SELECT 1 FROM wms_inbound_order WHERE order_no = 'INB-DEMO-PARTIAL-CLOSE-001');
+
+INSERT INTO wms_inbound_order (
+  order_no, source_order_no, mes_work_order_no, inbound_type, source_system,
+  warehouse_id, owner_code, owner_name, ship_from_country, sap_plant,
+  planned_qty, received_qty, status, sap_post_status, sap_post_result,
+  remark, created_by, updated_by, created_at
+)
+SELECT 'INB-DEMO-FULL-CLOSE-001', 'SRC-INB-DEMO-FULL-CLOSE-001', 'MES-INB-DEMO-FULL-CLOSE-001',
+       'PRODUCTION', 'SAP', 1, '3060', '杭州利沃得', '中国', '3060',
+       6, 6, 'RECEIVED', 'SUCCESS', 'SAP 入库回传成功',
+       '入库完全收货直接关单演示单', 'system', 'system', NOW()
+WHERE NOT EXISTS (SELECT 1 FROM wms_inbound_order WHERE order_no = 'INB-DEMO-FULL-CLOSE-001');
+
+INSERT INTO wms_inbound_order (
+  order_no, source_order_no, mes_work_order_no, inbound_type, source_system,
+  warehouse_id, owner_code, owner_name, ship_from_country, sap_plant,
+  planned_qty, received_qty, status, sap_post_status, sap_post_result,
+  remark, created_by, updated_by, created_at
+)
+SELECT 'INB-DEMO-CREATED-CANCEL-001', 'SRC-INB-DEMO-CREATED-CANCEL-001', 'MES-INB-DEMO-CREATED-CANCEL-001',
+       'PRODUCTION', 'SAP', 1, '3060', '杭州利沃得', '中国', '3060',
+       5, 0, 'CREATED', 'NOT_POSTED', '',
+       '入库创建状态取消按钮演示单', 'system', 'system', NOW()
+WHERE NOT EXISTS (SELECT 1 FROM wms_inbound_order WHERE order_no = 'INB-DEMO-CREATED-CANCEL-001');
+
+INSERT INTO wms_inbound_order_detail (
+  order_id, line_no, product_id, planned_qty, received_qty, shelved_qty,
+  sap_plant, sap_storage_location, sn_required, owner_code,
+  batch_no, quality_status, status
+)
+SELECT o.id, 10, p.id, 5, 3, 0, '3060', '1001', 0, '3060',
+       'BATCH-INB-DEMO-PARTIAL-CLOSE-001-10', 'QUALIFIED', 'PARTIAL_RECEIVED'
+FROM wms_inbound_order o
+JOIN md_product p ON p.owner_code = '3060' AND p.product_code = 'HXEDE081R10002'
+WHERE o.order_no = 'INB-DEMO-PARTIAL-CLOSE-001'
+  AND NOT EXISTS (
+    SELECT 1 FROM wms_inbound_order_detail d
+    WHERE d.order_id = o.id AND d.line_no = 10
+  );
+
+INSERT INTO wms_inbound_order_detail (
+  order_id, line_no, product_id, planned_qty, received_qty, shelved_qty,
+  sap_plant, sap_storage_location, sn_required, owner_code,
+  batch_no, quality_status, status
+)
+SELECT o.id, 20, p.id, 3, 0, 0, '3060', '1001', 0, '3060',
+       'BATCH-INB-DEMO-PARTIAL-CLOSE-001-20', 'QUALIFIED', 'CREATED'
+FROM wms_inbound_order o
+JOIN md_product p ON p.owner_code = '3060' AND p.product_code = 'LHECCHR11002'
+WHERE o.order_no = 'INB-DEMO-PARTIAL-CLOSE-001'
+  AND NOT EXISTS (
+    SELECT 1 FROM wms_inbound_order_detail d
+    WHERE d.order_id = o.id AND d.line_no = 20
+  );
+
+INSERT INTO wms_inbound_order_detail (
+  order_id, line_no, product_id, planned_qty, received_qty, shelved_qty,
+  sap_plant, sap_storage_location, sn_required, owner_code,
+  batch_no, quality_status, status
+)
+SELECT o.id, 10, p.id, 2, 2, 0, '3060', '1001', 0, '3060',
+       'BATCH-INB-DEMO-FULL-CLOSE-001-10', 'QUALIFIED', 'RECEIVED'
+FROM wms_inbound_order o
+JOIN md_product p ON p.owner_code = '3060' AND p.product_code = 'HXEDE081R10002'
+WHERE o.order_no = 'INB-DEMO-FULL-CLOSE-001'
+  AND NOT EXISTS (
+    SELECT 1 FROM wms_inbound_order_detail d
+    WHERE d.order_id = o.id AND d.line_no = 10
+  );
+
+INSERT INTO wms_inbound_order_detail (
+  order_id, line_no, product_id, planned_qty, received_qty, shelved_qty,
+  sap_plant, sap_storage_location, sn_required, owner_code,
+  batch_no, quality_status, status
+)
+SELECT o.id, 20, p.id, 4, 4, 0, '3060', '1001', 0, '3060',
+       'BATCH-INB-DEMO-FULL-CLOSE-001-20', 'QUALIFIED', 'RECEIVED'
+FROM wms_inbound_order o
+JOIN md_product p ON p.owner_code = '3060' AND p.product_code = 'LHECCHR11002'
+WHERE o.order_no = 'INB-DEMO-FULL-CLOSE-001'
+  AND NOT EXISTS (
+    SELECT 1 FROM wms_inbound_order_detail d
+    WHERE d.order_id = o.id AND d.line_no = 20
+  );
+
+INSERT INTO wms_inbound_order_detail (
+  order_id, line_no, product_id, planned_qty, received_qty, shelved_qty,
+  sap_plant, sap_storage_location, sn_required, owner_code,
+  batch_no, quality_status, status
+)
+SELECT o.id, 10, p.id, 5, 0, 0, '3060', '1001', 0, '3060',
+       'BATCH-INB-DEMO-CREATED-CANCEL-001-10', 'QUALIFIED', 'CREATED'
+FROM wms_inbound_order o
+JOIN md_product p ON p.owner_code = '3060' AND p.product_code = 'HXEDE081R10002'
+WHERE o.order_no = 'INB-DEMO-CREATED-CANCEL-001'
+  AND NOT EXISTS (
+    SELECT 1 FROM wms_inbound_order_detail d
+    WHERE d.order_id = o.id AND d.line_no = 10
+  );
+
+INSERT INTO wms_inbound_receipt (
+  receipt_no, inbound_order_id, inbound_order_no, receipt_time, receipt_user,
+  status, sap_post_status, sap_post_result, created_at
+)
+SELECT 'RCV-INB-DEMO-PARTIAL-CLOSE-001-01', o.id, o.order_no, NOW(), 'wh_admin',
+       'RECEIVED', 'FAILED', 'SAP 入库回传失败，待重传', NOW()
+FROM wms_inbound_order o
+WHERE o.order_no = 'INB-DEMO-PARTIAL-CLOSE-001'
+  AND NOT EXISTS (
+    SELECT 1 FROM wms_inbound_receipt r
+    WHERE r.receipt_no = 'RCV-INB-DEMO-PARTIAL-CLOSE-001-01'
+  );
+
+INSERT INTO wms_inbound_receipt_line (
+  receipt_id, inbound_order_line_id, line_no, product_id, product_code,
+  receive_qty, sap_post_qty, sap_post_status, sap_post_result
+)
+SELECT r.id, d.id, d.line_no, d.product_id, p.product_code,
+       d.received_qty, 0, 'FAILED', 'SAP 入库回传失败，待重传'
+FROM wms_inbound_receipt r
+JOIN wms_inbound_order_detail d ON d.order_id = r.inbound_order_id AND d.line_no = 10
+JOIN md_product p ON p.id = d.product_id
+WHERE r.receipt_no = 'RCV-INB-DEMO-PARTIAL-CLOSE-001-01'
+  AND NOT EXISTS (
+    SELECT 1 FROM wms_inbound_receipt_line rl
+    WHERE rl.receipt_id = r.id AND rl.inbound_order_line_id = d.id
+  );
+
+INSERT INTO wms_inbound_receipt (
+  receipt_no, inbound_order_id, inbound_order_no, receipt_time, receipt_user,
+  status, sap_post_status, sap_material_doc_no, sap_post_result, created_at
+)
+SELECT 'RCV-INB-DEMO-FULL-CLOSE-001-01', o.id, o.order_no, NOW(), 'wh_admin',
+       'RECEIVED', 'SUCCESS', '5000DEMOFULL001', 'SAP 入库回传成功', NOW()
+FROM wms_inbound_order o
+WHERE o.order_no = 'INB-DEMO-FULL-CLOSE-001'
+  AND NOT EXISTS (
+    SELECT 1 FROM wms_inbound_receipt r
+    WHERE r.receipt_no = 'RCV-INB-DEMO-FULL-CLOSE-001-01'
+  );
+
+INSERT INTO wms_inbound_receipt_line (
+  receipt_id, inbound_order_line_id, line_no, product_id, product_code,
+  receive_qty, sap_post_qty, sap_post_status, sap_material_doc_no, sap_post_result
+)
+SELECT r.id, d.id, d.line_no, d.product_id, p.product_code,
+       d.received_qty, d.received_qty, 'SUCCESS', '5000DEMOFULL001', 'SAP 入库回传成功'
+FROM wms_inbound_receipt r
+JOIN wms_inbound_order_detail d ON d.order_id = r.inbound_order_id AND d.received_qty > 0
+JOIN md_product p ON p.id = d.product_id
+WHERE r.receipt_no = 'RCV-INB-DEMO-FULL-CLOSE-001-01'
+  AND NOT EXISTS (
+    SELECT 1 FROM wms_inbound_receipt_line rl
+    WHERE rl.receipt_id = r.id AND rl.inbound_order_line_id = d.id
+  );
+
 INSERT INTO wms_outbound_order (
   order_no, source_order_no, source_system, outbound_type, warehouse_id, target_warehouse_id, customer_id,
   planned_qty, allocated_qty, picked_qty, review_qty, shipped_qty, status,

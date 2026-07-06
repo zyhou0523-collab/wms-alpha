@@ -111,6 +111,7 @@ export const inboundService = {
   update: (id: number, data: Record<string, unknown>) => request<any>({ url: `/inbound-orders/${id}`, method: 'put', data }),
   detail: (id: number) => request<any>({ url: `/inbound-orders/${id}`, method: 'get' }),
   cancel: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/inbound-orders/${id}/cancel`, method: 'post', data }),
+  close: (id: number, data: Record<string, unknown> = {}) => request<any>({ url: `/inbound-orders/${id}/close`, method: 'post', data }),
   receive: (id: number, data: Record<string, unknown>) => request<any>({ url: `/inbound-orders/${id}/receive`, method: 'post', data }),
   cancelReceipt: (id: number, receiptId: number, data: Record<string, unknown> = {}) => request<any>({ url: `/inbound-orders/${id}/receipts/${receiptId}/cancel`, method: 'post', data }),
   bindPackage: (id: number, data: Record<string, unknown>) => request<any>({ url: `/inbound-orders/${id}/bind-package`, method: 'post', data }),

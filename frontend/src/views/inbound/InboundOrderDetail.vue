@@ -11,6 +11,8 @@
           <el-button v-if="canEditOrder()" type="primary" plain @click="openEdit()">编辑</el-button>
           <el-button v-if="canCancelOrder()" type="danger" plain @click="cancelOrder()">取消单据</el-button>
           <el-button v-if="canReceiveOrder()" type="success" @click="openReceive()">收货</el-button>
+          <el-button v-if="canSapPostOrder()" type="warning" plain @click="submitSapPost()">回传 SAP</el-button>
+          <el-button v-if="canCloseOrder()" type="danger" plain @click="closeOrder()">关闭</el-button>
           <el-button type="primary" @click="load">刷新</el-button>
         </div>
       </div>
@@ -206,8 +208,10 @@ import { inboundService } from '../../api/services'
 import {
   canCancelInboundOrder,
   canCancelReceiveInboundOrder,
+  canCloseInboundOrder,
   canCollectSnInboundOrder,
   canEditInboundOrder,
+  canPostSapInboundOrder,
   canReceiveInboundOrder
 } from '../../constants/orderActionPermissions'
 import SnCollectDialog from './components/SnCollectDialog.vue'
@@ -326,6 +330,53 @@ async function cancelOrder() {
   await load()
 }
 
+async function closeOrder() {
+  const order = detail.value.order || {}
+  if (order.status === 'PARTIAL_RECEIVED') {
+    try {
+      await ElMessageBox.confirm(
+        '当前预期到货通知单尚未全部收货，是否将未收货数量生成新的预期到货通知单？',
+        '部分收货关单确认',
+        {
+          type: 'warning',
+          confirmButtonText: '生成分单并关闭',
+          cancelButtonText: '仅关闭原单',
+          distinguishCancelAndClose: true
+        }
+      )
+      await submitInboundClose(true)
+    } catch (action) {
+      if (action === 'cancel') {
+        await submitInboundClose(false)
+      }
+    }
+    return
+  }
+  await ElMessageBox.confirm(
+    '是否确认关闭该预期到货通知单？',
+    '关闭预期到货通知单',
+    { type: 'warning', confirmButtonText: '确认关闭', cancelButtonText: '取消' }
+  )
+  await submitInboundClose(false)
+}
+
+async function submitInboundClose(generateSplitOrder: boolean) {
+  const result = await inboundService.close(Number(route.params.id), {
+    operator: 'wh_admin',
+    generateSplitOrder,
+    remark: generateSplitOrder ? '部分收货关闭生成分单' : '关闭预期到货通知单'
+  })
+  const splitOrderNo = result?.splitOrderNo || result?.split_order_no
+  ElMessage.success(splitOrderNo ? `关闭成功，已生成分单 ${splitOrderNo}` : '关闭成功')
+  await load()
+}
+
+async function submitSapPost() {
+  await inboundService.sapPost(Number(route.params.id), { operator: 'wh_admin' })
+  ElMessage.success('SAP 入库回传已触发')
+  await load()
+}
+
 async function cancelReceipt(row: Row) {
   await ElMessageBox.confirm(
     `确认取消收货批次 ${row.receipt_no}？已回传 SAP 成功的批次不允许直接取消。`,
@@ -356,6 +407,14 @@ function canEditOrder() {
   )
   const hasReceipt = (detail.value.receiptRecords || []).some((row: Row) => row.status !== 'CANCELED')
   return canEditInboundOrder(order) && !hasCollectedSn && !hasReceipt
+}
+
+function canCloseOrder() {
+  return canCloseInboundOrder(detail.value.order || {})
+}
+
+function canSapPostOrder() {
+  return canPostSapInboundOrder(detail.value.order || {})
 }
 
 function canCancelReceipt(row: Row) {
